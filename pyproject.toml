@@ -13,7 +13,8 @@ authors = [{ name = "u-masao" }]
 # (see README) before running the `default` profile.
 dependencies = [
     "torch>=2.2",
-    "sentence-transformers>=5.4.0",
+    "torchvision",
+    "sentence-transformers[image]>=5.4.0",
     "transformers>=4.57.0",
     "datasets>=3.0.0",
     "diffusers>=0.31.0",
@@ -26,11 +27,12 @@ dependencies = [
 [project.optional-dependencies]
 # Extras that only make sense on the GPU box. Installed explicitly there.
 gpu = [
-    "flash-attn>=2.6.0; platform_system == 'Linux'",
-    "bitsandbytes>=0.43.0",
+    # "flash-attn>=2.6.0; platform_system == 'Linux'",
+    # "bitsandbytes>=0.43.0",
 ]
 dev = [
     "ruff>=0.6.0",
+    "dvc>=3.0",
 ]
 
 [project.scripts]
@@ -42,6 +44,15 @@ qwen3vl-rerank = "qwen3vl_demo.rerank:main"
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
+
+[tool.uv.sources]
+torch = [{ index = "pytorch-cu126", marker = "sys_platform == 'linux'" }]
+torchvision = [{ index = "pytorch-cu126", marker = "sys_platform == 'linux'" }]
+
+[[tool.uv.index]]
+name = "pytorch-cu126"
+url = "https://download.pytorch.org/whl/cu126"
+explicit = true
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/qwen3vl_demo"]
