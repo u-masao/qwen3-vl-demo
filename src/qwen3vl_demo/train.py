@@ -1,9 +1,17 @@
-"""Fine-tune the embedding model on the synthetic (caption, image) pairs.
+"""合成 (caption, image) ペアで埋め込みモデルをファインチューニングする。
 
-Uses MultipleNegativesRankingLoss: within each batch, a caption's own image is
-the positive and every other image is treated as an in-batch negative. The same
-InformationRetrievalEvaluator from ``evaluate.py`` tracks progress during
-training. The fine-tuned model is saved to ``cfg.model_path``.
+損失には **MultipleNegativesRankingLoss (MNRL)** を使う。MNRL の考え方:
+
+  * バッチ内の各キャプションについて、対応する画像（``positive``）を正例とする。
+  * 同じバッチに入っている **他のすべての画像** を負例（in-batch negatives）として扱う。
+  * 正例との類似度を上げ、負例との類似度を下げるように学習する。
+
+このため、バッチサイズが大きいほど 1 サンプルあたりの負例が増え、学習の質が上がりやすい
+（VRAM と要相談）。明示的に負例を用意しなくてよいのが MNRL の利点で、(anchor, positive)
+ペアさえあれば対照学習できる。
+
+学習中は evaluate.py と同じ InformationRetrievalEvaluator を evaluator として渡し、
+検索精度の推移を記録する。学習後のモデルは ``cfg.model_path`` に保存する。
 """
 
 from __future__ import annotations
@@ -18,6 +26,7 @@ from .models import load_embedding_model
 
 
 def train(cfg: Config) -> None:
+    """設定に従ってファインチューニングを実行し、モデルを保存する。"""
     from sentence_transformers import (
         SentenceTransformerTrainer,
         SentenceTransformerTrainingArguments,
@@ -26,21 +35,24 @@ def train(cfg: Config) -> None:
 
     model = load_embedding_model(cfg)
 
+    # 勾配チェックポイント: 計算を一部やり直す代わりに activation を保持せず VRAM を節約する。
+    # 16GB の GPU で 2B モデルを回すための重要な節約手段。バックボーンが対応していなければ無視。
     if cfg.train.gradient_checkpointing and hasattr(model, "gradient_checkpointing_enable"):
         try:
             model.gradient_checkpointing_enable()
-        except Exception as exc:  # noqa: BLE001 - best effort, not all backbones support it
-            print(f"  gradient checkpointing not enabled: {exc}")
+        except Exception as exc:  # noqa: BLE001 - ベストエフォート（全バックボーンが対応とは限らない）
+            print(f"  勾配チェックポイントを有効化できませんでした: {exc}")
 
     train_ds = load_from_disk(str(cfg.data_path / "train"))
-    # The loss only needs (anchor, positive); drop helper columns to be safe.
+    # MNRL が必要とするのは (anchor, positive) の 2 カラムだけ。補助の category 列などは
+    # 取り違え防止のために落としておく。
     keep = [c for c in ("anchor", "positive") if c in train_ds.column_names]
     train_ds = train_ds.select_columns(keep)
 
     loss = MultipleNegativesRankingLoss(model)
-    evaluator = build_ir_evaluator(cfg)
+    evaluator = build_ir_evaluator(cfg)  # 学習中の途中評価に使う（評価器は eval スプリット由来）
 
-    # bf16 on Ada, fp16 if explicitly requested, otherwise full precision (CPU).
+    # Ada では bf16、明示的に float16 指定なら fp16、CPU では混合精度なし（full precision）。
     use_bf16 = cfg.device != "cpu" and cfg.dtype == "bfloat16"
     use_fp16 = cfg.device != "cpu" and cfg.dtype == "float16"
 
@@ -58,9 +70,9 @@ def train(cfg: Config) -> None:
         eval_steps=cfg.train.eval_steps,
         save_strategy="steps",
         save_steps=cfg.train.save_steps,
-        save_total_limit=1,
+        save_total_limit=1,        # チェックポイントは最新 1 個だけ残す（ディスク節約）
         logging_steps=cfg.train.logging_steps,
-        report_to=[],
+        report_to=[],              # W&B 等の外部ロガーへは送らない
         seed=cfg.seed,
     )
 
@@ -72,16 +84,17 @@ def train(cfg: Config) -> None:
         evaluator=evaluator,
     )
 
-    print(f"Fine-tuning {cfg.embedding.model_id} on {len(train_ds)} pairs")
+    print(f"{cfg.embedding.model_id} を {len(train_ds)} ペアでファインチューニングします")
     trainer.train()
 
     cfg.model_path.mkdir(parents=True, exist_ok=True)
     model.save_pretrained(str(cfg.model_path))
-    print(f"Saved fine-tuned model to {cfg.model_path}")
+    print(f"ファインチューニング済みモデルを {cfg.model_path} に保存しました")
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Fine-tune the Qwen3-VL embedding model.")
+    """CLI エントリポイント: ``python -m qwen3vl_demo.train``。"""
+    parser = argparse.ArgumentParser(description="Qwen3-VL 埋め込みモデルをファインチューニングする。")
     add_config_args(parser)
     args = parser.parse_args()
     cfg = config_from_args(args)

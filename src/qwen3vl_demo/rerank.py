@@ -1,11 +1,18 @@
-"""Two-stage retrieval demo: embed -> retrieve top-k -> rerank.
+"""2 段階検索のデモ: 埋め込みで粗く絞る → リランカーで精密に並べ替える。
 
-Stage 1 uses the (fine-tuned, if available) embedding model to retrieve the
-top-k images for each query caption. Stage 2 reorders those k candidates with
-the Qwen3-VL cross-encoder reranker. For each sampled query we print where the
-correct image ranks before vs after reranking, and dump the examples to JSON.
+実運用の検索システムでよく使われる「retrieve-then-rerank」構成を再現する:
 
-Skipped automatically when ``reranker.model_id`` is null (e.g. smoke profile).
+  * **第 1 段（retrieve）**: ファインチューニング済み（あれば）の埋め込みモデルで、
+    各クエリ（キャプション）に対し画像コーパスから上位 k 件を高速に取得する。
+  * **第 2 段（rerank）**: その k 件だけを Qwen3-VL リランカー（cross-encoder）で
+    クエリと 1 件ずつ突き合わせて精密にスコアリングし、並べ替える。
+
+埋め込みは「クエリと文書を別々にベクトル化して内積」なので速いが粗い。リランカーは
+「クエリと文書をペアでまとめて入力」するので精度は高いが重い。両者を組み合わせ、
+速い埋め込みで候補を絞ってから重いリランカーを少数にだけ適用する、というのが定石。
+
+各サンプルクエリについて、正解画像が「リランク前」と「リランク後」で何位だったかを表示し、
+JSON にも書き出す。``reranker.model_id`` が null（スモークなど）のときは自動でスキップする。
 """
 
 from __future__ import annotations
@@ -20,7 +27,7 @@ from .models import load_embedding_model
 
 
 def _rank_of(target_cid: str, ordered_cids: list[str]) -> int | None:
-    """1-based rank of ``target_cid`` in ``ordered_cids`` (None if absent)."""
+    """``ordered_cids`` の中での ``target_cid`` の順位（1 始まり）を返す。無ければ None。"""
     for pos, cid in enumerate(ordered_cids, start=1):
         if cid == target_cid:
             return pos
@@ -28,28 +35,30 @@ def _rank_of(target_cid: str, ordered_cids: list[str]) -> int | None:
 
 
 def run_rerank(cfg: Config, num_queries: int = 5) -> None:
+    """埋め込み検索 → リランクを実行し、前後の順位変化を表示・保存する。"""
     if not cfg.reranker.model_id:
-        print("Reranker disabled (reranker.model_id is null) — skipping rerank demo.")
+        # スモークプロファイルなどリランカー未設定の場合は何もしない。
+        print("リランカーが無効（reranker.model_id が null）のためスキップします。")
         return
 
-    # Prefer the fine-tuned model if it exists, else fall back to the base model.
+    # FT 済みモデルがあればそれを、無ければベースモデルを第 1 段の検索に使う。
     embed_model_id = str(cfg.model_path) if cfg.model_path.exists() else cfg.embedding.model_id
-    print(f"Stage 1 retrieval with embedding model: {embed_model_id}")
+    print(f"第 1 段の検索に使う埋め込みモデル: {embed_model_id}")
     embed_model = load_embedding_model(cfg, model_id=embed_model_id)
 
     eval_ds = load_from_disk(str(cfg.data_path / "eval"))
-    corpus_images = [row["positive"] for row in eval_ds]
-    queries = [row["anchor"] for row in eval_ds]
-    cids = [f"d{i}" for i in range(len(eval_ds))]
+    corpus_images = [row["positive"] for row in eval_ds]  # 検索対象の画像コーパス
+    queries = [row["anchor"] for row in eval_ds]          # クエリ（キャプション）
+    cids = [f"d{i}" for i in range(len(eval_ds))]         # 文書 ID（行 i ↔ d{i} ↔ 正解）
 
-    # Stage 1: embed corpus + queries once, rank by cosine similarity.
+    # 第 1 段: コーパスとクエリを一度だけ埋め込み、コサイン類似度でランク付けする。
     corpus_emb = embed_model.encode(corpus_images, convert_to_tensor=True, show_progress_bar=False)
     query_emb = embed_model.encode(queries, convert_to_tensor=True, show_progress_bar=False)
-    sim = embed_model.similarity(query_emb, corpus_emb)  # [num_queries, num_corpus]
+    sim = embed_model.similarity(query_emb, corpus_emb)  # 形状 [クエリ数, コーパス数]
 
     top_k = min(cfg.reranker.top_k, len(corpus_images))
 
-    print(f"Stage 2 reranking with: {cfg.reranker.model_id}")
+    print(f"第 2 段のリランクに使うモデル: {cfg.reranker.model_id}")
     from sentence_transformers import CrossEncoder
 
     reranker = CrossEncoder(cfg.reranker.model_id, device=cfg.device)
@@ -58,16 +67,18 @@ def run_rerank(cfg: Config, num_queries: int = 5) -> None:
     examples = []
     for qi in range(n):
         scores = sim[qi]
-        retrieved = scores.topk(top_k).indices.tolist()  # corpus indices, best first
+        # 埋め込み類似度の上位 top_k を取得（スコア降順のコーパスインデックス）。
+        retrieved = scores.topk(top_k).indices.tolist()
         retrieved_cids = [cids[j] for j in retrieved]
-        target_cid = cids[qi]
-        rank_before = _rank_of(target_cid, retrieved_cids)
+        target_cid = cids[qi]                       # このクエリの正解文書 ID
+        rank_before = _rank_of(target_cid, retrieved_cids)  # リランク前の正解順位
 
-        # Rerank the retrieved candidates with the cross-encoder.
+        # 取得した候補だけをリランカーで並べ替える。
         candidate_images = [corpus_images[j] for j in retrieved]
         ranked = reranker.rank(queries[qi], candidate_images, top_k=top_k)
+        # rank() が返す corpus_id は candidate_images 内のインデックスなので cid に戻す。
         reranked_cids = [retrieved_cids[r["corpus_id"]] for r in ranked]
-        rank_after = _rank_of(target_cid, reranked_cids)
+        rank_after = _rank_of(target_cid, reranked_cids)    # リランク後の正解順位
 
         examples.append(
             {
@@ -79,25 +90,26 @@ def run_rerank(cfg: Config, num_queries: int = 5) -> None:
             }
         )
         print(
-            f"  q{qi}: '{queries[qi][:50]}' | correct image rank "
-            f"{rank_before} -> {rank_after} (of top-{top_k})"
+            f"  q{qi}: '{queries[qi][:50]}' | 正解画像の順位 "
+            f"{rank_before} -> {rank_after}（top-{top_k} 中）"
         )
 
     cfg.output_path.mkdir(parents=True, exist_ok=True)
     out_file = cfg.output_path / "rerank_examples.json"
     with open(out_file, "w", encoding="utf-8") as fh:
         json.dump(examples, fh, indent=2)
-    print(f"Saved rerank examples -> {out_file}")
+    print(f"リランク事例を保存しました -> {out_file}")
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Embed + retrieve + rerank demo.")
+    """CLI エントリポイント: ``python -m qwen3vl_demo.rerank``。"""
+    parser = argparse.ArgumentParser(description="埋め込み検索 + リランクのデモ。")
     add_config_args(parser)
     parser.add_argument(
         "--num-queries",
         type=int,
         default=5,
-        help="How many eval queries to demonstrate reranking on.",
+        help="リランクの様子を表示する eval クエリの件数。",
     )
     args = parser.parse_args()
     cfg = config_from_args(args)

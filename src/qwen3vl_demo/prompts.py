@@ -1,11 +1,22 @@
-"""Template-based caption generation.
+"""テンプレート組み合わせによるキャプション（プロンプト）生成。
 
-Captions are synthesized by combining hand-written word lists with sentence
-templates. Each caption doubles as:
-  * the prompt fed to SD-Turbo to render the matching image, and
-  * the ground-truth query text used to evaluate text->image retrieval.
+このモジュールが、デモのデータの「種」を作る。生成したキャプション 1 文は、
+次の 2 つの役割を **同時に** 担う:
 
-Generation is deterministic for a given ``seed`` so datasets are reproducible.
+  * SD-Turbo に渡して画像をレンダリングするための **プロンプト**
+  * テキスト→画像検索を評価するときの **正解クエリ文**
+
+つまり「画像を作るための指示文」がそのまま「正解ラベル付きの検索クエリ」になる、
+というのがこのデモの肝。人手アノテーションなしに学習データを無限に作れる。
+
+生成は ``seed`` に対して決定的。同じ seed なら毎回同じキャプション集合が得られるので、
+データセットの再現性が担保される（DVC のキャッシュとも相性が良い）。
+
+仕組み
+------
+手書きの単語リスト（被写体 / 形容詞 / 情景）と文テンプレートを ``random.Random(seed)``
+で組み合わせて 1 文を作る。被写体はカテゴリ（animal / vehicle / food / scene / object）
+ごとに分類してあり、そのカテゴリ情報を各サンプルに添えて持ち回る（緩い評価に利用可能）。
 """
 
 from __future__ import annotations
@@ -13,8 +24,8 @@ from __future__ import annotations
 import random
 from dataclasses import dataclass
 
-# Subjects grouped by category. The category travels with each sample so it can
-# (optionally) be used for a looser "same-category counts as relevant" eval.
+# 被写体をカテゴリ別に定義。各サンプルにカテゴリを添えておくことで、評価時に
+# 「同一カテゴリの画像も正解とみなす（緩い評価）」というオプションに利用できる。
 SUBJECTS: dict[str, list[str]] = {
     "animal": ["cat", "dog", "rabbit", "horse", "owl", "fox", "panda", "parrot"],
     "vehicle": ["car", "bicycle", "motorcycle", "sailboat", "train", "airplane", "scooter"],
@@ -23,11 +34,13 @@ SUBJECTS: dict[str, list[str]] = {
     "object": ["wooden chair", "leather backpack", "ceramic teapot", "old typewriter", "guitar", "lantern"],
 }
 
+# 形容詞（見た目の修飾）。多様性を稼ぐための語彙。
 ADJECTIVES: list[str] = [
     "fluffy", "tiny", "vintage", "glowing", "rustic", "colorful",
     "sleek", "weathered", "majestic", "cozy", "shiny", "wild",
 ]
 
+# 情景・状況（背景や状況の修飾）。
 SETTINGS: list[str] = [
     "on a wooden table",
     "under soft morning light",
@@ -41,6 +54,8 @@ SETTINGS: list[str] = [
     "under dramatic storm clouds",
 ]
 
+# 文テンプレート。{adj}=形容詞, {subj}=被写体, {setting}=情景 を埋め込む。
+# 文型を複数持つことで、表現の揺れ（言い回しの多様性）を作る。
 TEMPLATES: list[str] = [
     "a {adj} photo of a {subj} {setting}",
     "a {subj} {setting}",
@@ -51,30 +66,45 @@ TEMPLATES: list[str] = [
 
 @dataclass(frozen=True)
 class Sample:
-    """One generated caption plus the subject category it belongs to."""
+    """生成された 1 件のキャプションと、その被写体カテゴリ。
+
+    Attributes:
+        text: キャプション本文（画像生成プロンプト兼・検索クエリ）。
+        category: 被写体カテゴリ（"animal" など）。緩い評価の正解判定に使う。
+    """
 
     text: str
     category: str
 
 
 def build_captions(n: int, seed: int) -> list[Sample]:
-    """Return ``n`` unique :class:`Sample` captions, deterministic for ``seed``.
+    """重複のない :class:`Sample` を ``n`` 件返す（``seed`` に対して決定的）。
 
-    Raises ``ValueError`` if ``n`` exceeds the number of unique captions that
-    can be produced from the available vocabulary within a reasonable number of
-    attempts.
+    語彙の組み合わせをランダムに引いて文を作り、重複は集合で弾く。語彙が尽きて
+    ``n`` 件の一意なキャプションを作れない場合は ``ValueError`` を送出する。
+
+    Args:
+        n: 生成するキャプション件数。
+        seed: 乱数シード。train と eval で別の seed を使えば重複しない。
+
+    Returns:
+        長さ ``n`` の :class:`Sample` のリスト。
+
+    Raises:
+        ValueError: 試行回数の上限内で ``n`` 件の一意なキャプションを作れなかった場合。
     """
     rng = random.Random(seed)
     categories = list(SUBJECTS.keys())
 
     seen: set[str] = set()
     samples: list[Sample] = []
-    # Cap attempts to avoid an infinite loop if n is larger than the vocabulary.
+    # n が語彙の組み合わせ数を超えると無限ループになりかねないので、試行回数に上限を設ける。
     max_attempts = max(1000, n * 50)
     attempts = 0
 
     while len(samples) < n and attempts < max_attempts:
         attempts += 1
+        # カテゴリ → 被写体 → 形容詞 → 情景 → 文型 の順にランダムに選ぶ。
         category = rng.choice(categories)
         subj = rng.choice(SUBJECTS[category])
         adj = rng.choice(ADJECTIVES)
@@ -82,13 +112,13 @@ def build_captions(n: int, seed: int) -> list[Sample]:
         template = rng.choice(TEMPLATES)
         text = template.format(adj=adj, subj=subj, setting=setting)
         if text in seen:
-            continue
+            continue  # 既出の文はスキップ（一意性を保つ）
         seen.add(text)
         samples.append(Sample(text=text, category=category))
 
     if len(samples) < n:
         raise ValueError(
-            f"Could only build {len(samples)} unique captions (requested {n}). "
-            "Reduce the requested count or expand the vocabulary in prompts.py."
+            f"一意なキャプションを {len(samples)} 件しか生成できませんでした（要求: {n} 件）。"
+            "件数を減らすか、prompts.py の語彙を増やしてください。"
         )
     return samples

@@ -23,6 +23,18 @@ caption (text)  ──SD-Turbo──▶  image
 
 ---
 
+## ドキュメント
+
+詳しい解説は [`docs/`](docs/) にあります。
+
+| ドキュメント | 内容 |
+|---|---|
+| [アーキテクチャ](docs/architecture.md) | 全体構造・モジュール依存・データの流れ・プロファイル設計 |
+| [仕様](docs/specification.md) | 目的とスコープ・使用モデル・動作要件・設定/CLI/出力の仕様・評価指標 |
+| [動作解説](docs/how-it-works.md) | データ生成・学習・評価・リランクの「何を・なぜ・どうやって」 |
+
+---
+
 ## 必要環境
 
 実際の学習・生成には **CUDA GPU が必須**です。本デモのデフォルト設定は
@@ -69,6 +81,31 @@ make all                     # フルパイプライン（GPU 推奨）
 | `make rerank`     | 検索 top-k を Reranker で再ランク → `outputs/rerank_examples.json` |
 
 完了後、`metrics_base.json` と `metrics_finetuned.json` を比べると NDCG / Recall の改善が確認できます。
+
+### 結果を可視化する（Gradio）
+
+生成済みの成果物（メトリクス・データセット・リランク結果）をブラウザで確認できる
+読み取り専用ビューアを同梱しています。
+
+```bash
+uv run python app.py        # → http://localhost:7860
+```
+
+タブ構成: **📊 メトリクス比較**（ベース vs FT 後の棒グラフ＋差分表） /
+**🖼️ データセット閲覧**（生成画像とキャプションを 1 枚ずつ） /
+**🔄 Reranking デモ**（リランク前後の順位比較）。`outputs` / `outputs_smoke` を切り替えて閲覧できます。
+
+### DVC で再現実行する（任意）
+
+[DVC](https://dvc.org/) パイプライン（[`dvc.yaml`](dvc.yaml)）も用意しています。各ステージの
+依存（ソース・入力）と出力を宣言してあるので、**変更があったステージだけ**を再実行できます。
+
+```bash
+uv run dvc repro            # 依存追跡つきでパイプラインを再現実行
+uv run dvc metrics show     # metrics_*.json を一覧表示
+```
+
+`default` / `smoke` の両プロファイルが同一定義（`foreach`）から展開されます。
 
 ### 設定の変更
 
@@ -117,15 +154,23 @@ make smoke
 ## 構成
 
 ```
-src/qwen3vl_demo/
-├── config.py         # YAML -> dataclass、--config / --profile
-├── prompts.py        # テンプレート組み合わせでキャプション生成
-├── generate_data.py  # SD-Turbo（or スタブ）で画像生成 → datasets 保存
-├── models.py         # 埋め込みモデルのロード（attn フォールバック付き）
-├── evaluate.py       # InformationRetrievalEvaluator で NDCG/Recall
-├── train.py          # MultipleNegativesRankingLoss で FT
-└── rerank.py         # 埋め込み検索 top-k → Reranker で再ランク
+qwen3-vl-demo/
+├── src/qwen3vl_demo/
+│   ├── config.py         # YAML -> dataclass、--config / --profile
+│   ├── prompts.py        # テンプレート組み合わせでキャプション生成
+│   ├── generate_data.py  # SD-Turbo（or スタブ）で画像生成 → datasets 保存
+│   ├── models.py         # 埋め込みモデルのロード（attn フォールバック付き）
+│   ├── evaluate.py       # InformationRetrievalEvaluator で NDCG/Recall
+│   ├── train.py          # MultipleNegativesRankingLoss で FT
+│   └── rerank.py         # 埋め込み検索 top-k → Reranker で再ランク
+├── app.py                # Gradio 結果ビューア
+├── configs/              # default.yaml（本番）/ smoke.yaml（CPU 配線確認）
+├── docs/                 # アーキテクチャ / 仕様 / 動作解説
+├── dvc.yaml              # DVC パイプライン定義
+└── Makefile              # 各ステージの実行ターゲット
 ```
+
+各モジュールの責務と相互依存は [アーキテクチャ](docs/architecture.md) を参照してください。
 
 ---
 

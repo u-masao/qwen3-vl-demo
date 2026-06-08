@@ -1,9 +1,17 @@
-"""Evaluate text->image retrieval quality with an InformationRetrievalEvaluator.
+"""テキスト→画像検索の精度を InformationRetrievalEvaluator で測定する。
 
-Queries are the captions; the corpus is the set of generated images; each query
-is relevant to its own image (and, optionally, to same-category images).
-Metrics (NDCG / Recall / MRR @k) are printed and written to JSON so the base
-and fine-tuned models can be compared.
+評価の構図:
+  * **クエリ (queries)**       … 各行のキャプション（テキスト）
+  * **コーパス (corpus)**      … 生成した全画像の集合
+  * **正解 (relevant_docs)**   … 各クエリは「自分自身のキャプションから作られた画像」に対応
+                                 （``relevant_same_category`` が真なら同カテゴリ画像も正解に含める）
+
+評価器はクエリ（テキスト）とコーパス（画像）をそれぞれ埋め込み、コサイン類似度で
+ランキングして NDCG / Recall / MRR などを @k で算出する。結果は JSON に書き出すので、
+ベースモデルとファインチューニング済みモデルの数値を後から比較できる。
+
+このモジュールの ``build_ir_evaluator`` は train.py からも import され、学習中の
+途中評価（evaluator コールバック）にも再利用される。
 """
 
 from __future__ import annotations
@@ -16,29 +24,37 @@ from datasets import load_from_disk
 from .config import Config, add_config_args, config_from_args
 from .models import load_embedding_model
 
+# 評価器の名前。出力されるメトリクスのキーにこの名前が前置される
+# （例: "synthetic-image-retrieval_cosine_ndcg@10"）。app.py 側の表示と揃えてある。
 EVALUATOR_NAME = "synthetic-image-retrieval"
 
 
 def build_ir_evaluator(cfg: Config, name: str = EVALUATOR_NAME):
-    """Construct an InformationRetrievalEvaluator from the saved eval split."""
+    """保存済みの eval スプリットから InformationRetrievalEvaluator を構築する。
+
+    各行 i に対してクエリ ``q{i}`` と文書 ``d{i}`` を割り当て、``q{i}`` の正解を
+    ``d{i}``（同じ行の画像）とする厳密 1 対 1 のマッピングを基本とする。
+    ``cfg.data.relevant_same_category`` が真なら、同一カテゴリの全文書も正解集合に加える。
+    """
     from sentence_transformers.evaluation import InformationRetrievalEvaluator
 
     eval_ds = load_from_disk(str(cfg.data_path / "eval"))
 
-    queries: dict[str, str] = {}
-    corpus: dict = {}
-    relevant_docs: dict[str, set[str]] = {}
-    category_to_cids: dict[str, set[str]] = {}
+    queries: dict[str, str] = {}            # qid -> クエリ文
+    corpus: dict = {}                       # cid -> 画像（PIL）
+    relevant_docs: dict[str, set[str]] = {}  # qid -> 正解 cid の集合
+    category_to_cids: dict[str, set[str]] = {}  # カテゴリ -> その cid 集合（緩い評価用）
 
     for i, row in enumerate(eval_ds):
         qid = f"q{i}"
         cid = f"d{i}"
         queries[qid] = row["anchor"]
-        corpus[cid] = row["positive"]  # PIL image (decoded by the Image feature)
-        relevant_docs[qid] = {cid}
+        corpus[cid] = row["positive"]   # Image 型カラムなので PIL 画像としてデコードされる
+        relevant_docs[qid] = {cid}      # まずは厳密 1 対 1 の正解
         category_to_cids.setdefault(row["category"], set()).add(cid)
 
     if cfg.data.relevant_same_category:
+        # 緩い評価: 同じカテゴリの画像もすべて正解とみなす。
         for i, row in enumerate(eval_ds):
             qid = f"q{i}"
             relevant_docs[qid] |= category_to_cids[row["category"]]
@@ -54,11 +70,15 @@ def build_ir_evaluator(cfg: Config, name: str = EVALUATOR_NAME):
 
 
 def evaluate_model(cfg: Config, model_id: str, label: str) -> dict:
-    """Load ``model_id`` and run the IR evaluator; return the metrics dict."""
-    print(f"Evaluating [{label}]: {model_id}")
+    """``model_id`` をロードして評価器を回し、メトリクス dict を返す。
+
+    メトリクスは ``<output_dir>/metrics_<label>.json`` にも書き出す。
+    ``label`` は通常 "base"（ベース）/ "finetuned"（FT 後）を使う。
+    """
+    print(f"評価 [{label}]: {model_id}")
     model = load_embedding_model(cfg, model_id=model_id)
     evaluator = build_ir_evaluator(cfg)
-    metrics = evaluator(model)
+    metrics = evaluator(model)  # 評価器を呼ぶとメトリクス dict が返る
 
     cfg.output_path.mkdir(parents=True, exist_ok=True)
     out_file = cfg.output_path / f"metrics_{label}.json"
@@ -66,12 +86,12 @@ def evaluate_model(cfg: Config, model_id: str, label: str) -> dict:
         json.dump(metrics, fh, indent=2, sort_keys=True)
 
     _print_headline(metrics, label)
-    print(f"  full metrics -> {out_file}")
+    print(f"  全メトリクス -> {out_file}")
     return metrics
 
 
 def _print_headline(metrics: dict, label: str) -> None:
-    """Print the few headline metrics if present (keys vary by ST version)."""
+    """主要メトリクスだけを抜き出して表示する（キー名は ST のバージョンで変わりうる）。"""
     interesting = ("ndcg@10", "recall@1", "recall@5", "recall@10", "mrr@10")
     found = {
         k: v
@@ -79,6 +99,7 @@ def _print_headline(metrics: dict, label: str) -> None:
         if any(k.lower().endswith(s) for s in interesting)
     }
     if not found:
+        # 想定キーが見つからない場合は全部そのまま出す（バージョン差異の保険）。
         print(f"  [{label}] metrics: {metrics}")
         return
     for k in sorted(found):
@@ -86,28 +107,30 @@ def _print_headline(metrics: dict, label: str) -> None:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Evaluate text->image retrieval.")
+    """CLI エントリポイント: ``python -m qwen3vl_demo.evaluate``。"""
+    parser = argparse.ArgumentParser(description="テキスト→画像検索の精度を評価する。")
     add_config_args(parser)
     parser.add_argument(
         "--model",
         type=str,
         default=None,
-        help="Model id or path to evaluate (default: base embedding model from config).",
+        help="評価するモデル ID またはパス（既定: 設定のベース埋め込みモデル）。",
     )
     parser.add_argument(
         "--finetuned",
         action="store_true",
-        help="Evaluate the fine-tuned model saved at cfg.model_path (implies label 'finetuned').",
+        help="cfg.model_path に保存された FT 済みモデルを評価する（label は 'finetuned' になる）。",
     )
     parser.add_argument(
         "--label",
         type=str,
         default=None,
-        help="Label for the output metrics file (default: 'finetuned' with --finetuned, else 'base').",
+        help="出力メトリクスファイルのラベル（既定: --finetuned 指定時は 'finetuned'、他は 'base'）。",
     )
     args = parser.parse_args()
     cfg = config_from_args(args)
 
+    # --finetuned が指定されたら FT 済みモデルを優先。それ以外は --model か設定値。
     if args.finetuned:
         model_id = str(cfg.model_path)
         label = args.label or "finetuned"
