@@ -16,11 +16,10 @@
 - 合成データ生成（SD-Turbo）
 - 埋め込みモデルのファインチューニング（Sentence Transformers / MNRL）
 - 検索精度の評価（学習前後の比較）
-- リランカー（Qwen3-VL-Reranker-2B）による 2 段階検索の **推論デモ**
+- リランカー（Qwen3-VL-Reranker-2B）のファインチューニング（負例マイニング＋BCE）と 2 段階検索デモ
 - 結果の可視化（Gradio）
 
 ### スコープに含まないもの
-- リランカー自体のファインチューニング（推論のみ）
 - 本番運用向けのベクトル DB / サービング
 - 大規模データセットや分散学習
 
@@ -28,14 +27,17 @@
 
 ## 2. 使用モデル
 
-| 役割 | モデル | 備考 |
-|---|---|---|
-| 画像生成 | [`stabilityai/sd-turbo`](https://huggingface.co/stabilityai/sd-turbo) | 1〜4 ステップの蒸留モデル。guidance なし |
-| 埋め込み（FT 対象） | [`Qwen/Qwen3-VL-Embedding-2B`](https://huggingface.co/Qwen/Qwen3-VL-Embedding-2B) | テキスト・画像を同一空間に埋め込む |
-| リランカー（推論のみ） | [`Qwen/Qwen3-VL-Reranker-2B`](https://huggingface.co/Qwen/Qwen3-VL-Reranker-2B) | cross-encoder。クエリ×文書を精密スコア |
-| 埋め込み（smoke 代替） | `sentence-transformers/clip-ViT-B-32` | 小型・CPU 可。配線確認専用 |
+| 役割 | モデル | ライセンス | 備考 |
+|---|---|---|---|
+| 画像生成 | [`stabilityai/sd-turbo`](https://huggingface.co/stabilityai/sd-turbo) | [Stability AI Community License](https://stability.ai/license) | 1〜4 ステップの蒸留モデル。guidance なし |
+| 埋め込み（FT 対象） | [`Qwen/Qwen3-VL-Embedding-2B`](https://huggingface.co/Qwen/Qwen3-VL-Embedding-2B) | Apache-2.0 | テキスト・画像を同一空間に埋め込む |
+| リランカー（FT＋推論） | [`Qwen/Qwen3-VL-Reranker-2B`](https://huggingface.co/Qwen/Qwen3-VL-Reranker-2B) | Apache-2.0 | cross-encoder。クエリ×文書を精密スコア |
+| 埋め込み（smoke 代替） | `sentence-transformers/clip-ViT-B-32` | MIT | 小型・CPU 可。配線確認専用 |
 
-各モデルのライセンスは各モデルカードに従います。
+> ⚠️ **ライセンスに注意**: リポジトリのコードは MIT ですが、各モデルには独自のライセンスがあり、
+> 生成物にも条件が及ぶ場合があります。特に **SD-Turbo は Stability AI Community License** で、
+> 年商 100 万ドルを超える組織での商用利用には別途ライセンスが必要です。詳細は各モデルカードと
+> [README のライセンス節](../README.md#license) を参照してください。
 
 ---
 
@@ -106,7 +108,8 @@
 |---|---|---|
 | `python -m qwen3vl_demo.generate_data` | — | データセット生成 |
 | `python -m qwen3vl_demo.evaluate` | `--model ID/PATH`, `--finetuned`, `--label STR` | 検索精度評価。`--finetuned` で FT 済みモデルを評価 |
-| `python -m qwen3vl_demo.train` | — | ファインチューニング |
+| `python -m qwen3vl_demo.train` | — | 埋め込みモデルのファインチューニング |
+| `python -m qwen3vl_demo.train_reranker` | — | リランカーのファインチューニング（reranker.model_id が null ならスキップ） |
 | `python -m qwen3vl_demo.rerank` | `--num-queries N` | リランクデモ（表示するクエリ数） |
 | `python app.py` | — | Gradio ビューア（:7860） |
 
@@ -122,8 +125,9 @@
 | `<data_dir>/train`, `<data_dir>/eval` | generate_data | datasets（anchor/positive/category） |
 | `<output_dir>/metrics_base.json` | evaluate (base) | ベースモデルのメトリクス |
 | `<output_dir>/metrics_finetuned.json` | evaluate (--finetuned) | FT 後のメトリクス |
-| `<output_dir>/model/` | train | FT 済み SentenceTransformer |
+| `<output_dir>/model/` | train | FT 済み埋め込みモデル（SentenceTransformer） |
 | `<output_dir>/checkpoints/` | train | 学習中チェックポイント（最新 1 個） |
+| `<reranker.model_dir>/` | train_reranker | FT 済みリランカー（CrossEncoder） |
 | `<output_dir>/rerank_examples.json` | rerank | リランク前後の順位事例 |
 
 > `data/`・`outputs/`（および smoke 版）は `.gitignore` 済み。再現は設定とコードから可能です。

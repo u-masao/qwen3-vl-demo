@@ -35,6 +35,8 @@ embedding:
 reranker:
   model_id: Qwen/Qwen3-VL-Reranker-2B
   top_k: 10                       # how many retrieved images to rerank per query
+  model_dir: outputs/reranker     # where a fine-tuned reranker is saved / loaded from
+  num_negatives: 3                # negatives per positive when fine-tuning the reranker
 
 train:
   epochs: 1

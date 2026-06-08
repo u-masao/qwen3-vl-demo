@@ -137,6 +137,23 @@ relevant_docs : q_i の正解 = d_i （厳密 1 対 1）
 （`rerank_examples.json`）、順位が上がっていれば 2 段階構成の効果が見えます。
 `reranker.model_id` が null（smoke）のときは自動でスキップします。
 
+### リランカーのファインチューニング（`train_reranker.py`）
+
+リランカーも合成データで微調整できます。cross-encoder は「クエリと文書をペアで入力して
+1 つの関連度スコアを出す」ので、学習には **正例（一致ペア）と負例（不一致ペア）の両方** が必要です。
+そこで合成データから負例を自動生成（ネガティブマイニング）します:
+
+- 各キャプション i について、対応する画像 i を **正例（label=1）**
+- 同じキャプション i に対し、別の画像 j（できるだけ別カテゴリ）を **負例（label=0）** を `num_negatives` 件
+
+この (query, image, label) を `BinaryCrossEntropyLoss`（各ペアを「関連あり/なし」の 2 値分類）で
+`CrossEncoderTrainer` を使って学習します。負例マイニングのインデックス決定ロジック
+（`build_pair_indices`）は画像を触らない純粋関数で、単体テストで挙動を固定しています。
+学習後のリランカーは `reranker.model_dir` に保存し、`rerank.py` が存在すれば自動で優先利用します。
+
+> マルチモーダル cross-encoder の学習は新しい機能で、`sentence-transformers>=5.4` のマルチモーダル
+> 対応に依存します。`reranker.model_id` が null（smoke）のときは学習もスキップされます。
+
 ---
 
 ## ステージ 5: 可視化（`app.py`）
@@ -161,8 +178,9 @@ prompts.py が文を作る
       → evaluate がベース精度を測る（before）
          → train が MNRL でそのペアに適応させる
             → evaluate が FT 後精度を測る（after）→ before と比較
-               → rerank が 2 段階検索で仕上げる
-                  → app.py で全部を可視化
+               → train_reranker がリランカーを微調整する
+                  → rerank が 2 段階検索で仕上げる
+                     → app.py で全部を可視化
 ```
 
 「画像生成の入出力 = 検索の学習データ」という 1 つの発想だけで、データ作成から

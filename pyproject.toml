@@ -6,11 +6,32 @@ readme = "README.md"
 requires-python = ">=3.10"
 license = { file = "LICENSE" }
 authors = [{ name = "u-masao" }]
+keywords = [
+    "qwen3-vl",
+    "multimodal",
+    "embeddings",
+    "sentence-transformers",
+    "fine-tuning",
+    "image-retrieval",
+    "reranker",
+    "stable-diffusion",
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
 
-# Core dependencies needed for every profile (including the CPU smoke test).
-# Torch is intentionally NOT pinned to a CUDA build here so the package also
-# imports on CPU-only machines. On the GPU box, install a CUDA torch build
-# (see README) before running the `default` profile.
+# 全プロファイル（CPU スモークテストを含む）で必要となる中核依存。
+# 注意: 下の [tool.uv.sources] により、Linux では torch / torchvision を CUDA 12.6
+# ビルド（pytorch-cu126）から取得する。CPU のみ／macOS／別の CUDA を使う場合は、
+# 環境に合った torch を先に入れるか、その設定を上書きすること（README 参照）。
 dependencies = [
     "torch>=2.2",
     "torchvision",
@@ -35,12 +56,19 @@ gpu = [
 dev = [
     "ruff>=0.6.0",
     "dvc>=3.0",
+    "pytest>=8.0",
 ]
+
+[project.urls]
+Homepage = "https://github.com/u-masao/qwen3-vl-demo"
+Repository = "https://github.com/u-masao/qwen3-vl-demo"
+Issues = "https://github.com/u-masao/qwen3-vl-demo/issues"
 
 [project.scripts]
 qwen3vl-generate-data = "qwen3vl_demo.generate_data:main"
 qwen3vl-evaluate = "qwen3vl_demo.evaluate:main"
 qwen3vl-train = "qwen3vl_demo.train:main"
+qwen3vl-train-reranker = "qwen3vl_demo.train_reranker:main"
 qwen3vl-rerank = "qwen3vl_demo.rerank:main"
 
 [build-system]
@@ -66,3 +94,8 @@ target-version = "py310"
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B"]
 ignore = ["E501"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+pythonpath = ["src"]

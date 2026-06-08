@@ -12,10 +12,10 @@ PROFILE ?= default
 RUN := uv run
 PY := $(RUN) python -m qwen3vl_demo
 
-.PHONY: setup data eval-base train eval rerank all smoke clean help
+.PHONY: setup data eval-base train eval train-reranker rerank all smoke test lint clean help
 
 help:
-	@echo "Targets: setup | data | eval-base | train | eval | rerank | all | smoke | clean"
+	@echo "Targets: setup | data | eval-base | train | eval | train-reranker | rerank | all | smoke | test | lint | clean"
 	@echo "Override the profile with PROFILE=default|smoke (current: $(PROFILE))"
 
 setup:
@@ -33,12 +33,23 @@ train:
 eval:
 	$(PY).evaluate --profile $(PROFILE) --finetuned
 
+train-reranker:
+	$(PY).train_reranker --profile $(PROFILE)
+
 rerank:
 	$(PY).rerank --profile $(PROFILE)
 
-# Full story: generate -> baseline eval -> fine-tune -> post eval -> rerank.
-all: data eval-base train eval rerank
+# Full story: generate -> baseline eval -> fine-tune embed -> post eval
+#             -> fine-tune reranker -> rerank.
+all: data eval-base train eval train-reranker rerank
 	@echo "Pipeline complete. Compare outputs/metrics_base.json vs outputs/metrics_finetuned.json"
+
+# Lightweight unit tests (pure-Python, no GPU / no heavy model downloads).
+test:
+	$(RUN) pytest
+
+lint:
+	$(RUN) ruff check src app.py tests
 
 # CPU end-to-end plumbing test (no heavy model downloads). Skips rerank
 # because the smoke profile has no reranker model configured.
@@ -47,6 +58,7 @@ smoke:
 	$(MAKE) eval-base PROFILE=smoke
 	$(MAKE) train PROFILE=smoke
 	$(MAKE) eval PROFILE=smoke
+	$(MAKE) train-reranker PROFILE=smoke
 	$(MAKE) rerank PROFILE=smoke
 	@echo "Smoke test complete."
 

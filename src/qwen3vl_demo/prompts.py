@@ -77,7 +77,7 @@ class Sample:
     category: str
 
 
-def build_captions(n: int, seed: int) -> list[Sample]:
+def build_captions(n: int, seed: int, max_attempts: int | None = None) -> list[Sample]:
     """重複のない :class:`Sample` を ``n`` 件返す（``seed`` に対して決定的）。
 
     語彙の組み合わせをランダムに引いて文を作り、重複は集合で弾く。語彙が尽きて
@@ -86,6 +86,9 @@ def build_captions(n: int, seed: int) -> list[Sample]:
     Args:
         n: 生成するキャプション件数。
         seed: 乱数シード。train と eval で別の seed を使えば重複しない。
+        max_attempts: 一意なキャプションを集めるための試行回数の上限。``None`` の
+            場合は ``max(1000, n * 50)`` を使う。語彙数を大きく超える ``n`` を渡すと
+            上限まで回ってから ``ValueError`` になるため、テスト等では小さい値を明示できる。
 
     Returns:
         長さ ``n`` の :class:`Sample` のリスト。
@@ -99,7 +102,8 @@ def build_captions(n: int, seed: int) -> list[Sample]:
     seen: set[str] = set()
     samples: list[Sample] = []
     # n が語彙の組み合わせ数を超えると無限ループになりかねないので、試行回数に上限を設ける。
-    max_attempts = max(1000, n * 50)
+    if max_attempts is None:
+        max_attempts = max(1000, n * 50)
     attempts = 0
 
     while len(samples) < n and attempts < max_attempts:

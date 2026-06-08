@@ -1,116 +1,124 @@
-# Qwen3-VL マルチモーダル埋め込み ファインチューニング・デモ
+<!-- Language: **English** | [日本語](README.ja.md) -->
 
-**合成データだけで「画像検索の精度が上がる」体験**を、最小構成で一気通貫に再現するデモです。
+# Qwen3-VL Multimodal Embedding Fine-tuning Demo
 
-1. 🎨 **データ生成** — 画像生成モデル [SD-Turbo](https://huggingface.co/stabilityai/sd-turbo) で、キャプション付き画像データセットを自動生成（キャプション＝そのまま検索クエリの正解になる）
-2. 📐 **ベース評価** — [Qwen3-VL-Embedding-2B](https://huggingface.co/Qwen/Qwen3-VL-Embedding-2B) のテキスト→画像検索精度（NDCG / Recall@k）を測定
-3. 🔧 **ファインチューニング** — [Sentence Transformers](https://sbert.net) で埋め込みモデルを合成ペアに適応
-4. 📈 **再評価** — 学習前後で検索精度を比較
-5. 🥇 **リランク** — [Qwen3-VL-Reranker-2B](https://huggingface.co/Qwen/Qwen3-VL-Reranker-2B) で上位候補を再ランクして仕上げ
+A minimal, end-to-end demo that shows how **synthetic data alone can improve image retrieval**.
+
+1. 🎨 **Generate data** — use the text-to-image model [SD-Turbo](https://huggingface.co/stabilityai/sd-turbo) to synthesize a captioned image dataset (each caption *is* the ground-truth query for its image)
+2. 📐 **Baseline eval** — measure text→image retrieval quality (NDCG / Recall@k) of [Qwen3-VL-Embedding-2B](https://huggingface.co/Qwen/Qwen3-VL-Embedding-2B)
+3. 🔧 **Fine-tune** — adapt the embedding model to the synthetic pairs with [Sentence Transformers](https://sbert.net)
+4. 📈 **Re-eval** — compare retrieval quality before vs after fine-tuning
+5. 🥇 **Rerank** — fine-tune [Qwen3-VL-Reranker-2B](https://huggingface.co/Qwen/Qwen3-VL-Reranker-2B) and rerank the top candidates
 
 ```
 caption (text)  ──SD-Turbo──▶  image
       │                          │
-      └──────────  (text, image) ペア  ──────────┐
+      └──────────  (text, image) pair  ──────────┐
                                                  ▼
-        Qwen3-VL-Embedding-2B  ──fine-tune──▶  改善した検索
+        Qwen3-VL-Embedding-2B  ──fine-tune──▶  better retrieval
                                                  ▼
-                          Qwen3-VL-Reranker-2B で再ランク
+                   rerank with Qwen3-VL-Reranker-2B (fine-tuned)
 ```
 
-> なぜ面白いか: **人手アノテーション不要**。画像生成のプロンプトがそのまま「正解ラベル付きのクエリ」になるので、
-> 検索モデルの学習データがタダで無限に作れる、という発想のデモです。
+> **Why it's neat:** **no human annotation needed.** The image-generation prompt
+> doubles as a labelled query, so you can mint training data for a retrieval
+> model essentially for free.
+
+> 📖 The detailed design docs under [`docs/`](docs/) are written in Japanese.
+> A Japanese version of this README is available at [README.ja.md](README.ja.md).
 
 ---
 
-## ドキュメント
+## Documentation
 
-詳しい解説は [`docs/`](docs/) にあります。
+Detailed docs live under [`docs/`](docs/) (Japanese).
 
-| ドキュメント | 内容 |
+| Doc | Contents |
 |---|---|
-| [アーキテクチャ](docs/architecture.md) | 全体構造・モジュール依存・データの流れ・プロファイル設計 |
-| [仕様](docs/specification.md) | 目的とスコープ・使用モデル・動作要件・設定/CLI/出力の仕様・評価指標 |
-| [動作解説](docs/how-it-works.md) | データ生成・学習・評価・リランクの「何を・なぜ・どうやって」 |
+| [Architecture](docs/architecture.md) | Overall structure, module dependencies, data flow, profile design |
+| [Specification](docs/specification.md) | Goals & scope, models used, requirements, config/CLI/output specs, metrics |
+| [How it works](docs/how-it-works.md) | The "what / why / how" of data generation, training, evaluation, reranking |
 
 ---
 
-## 必要環境
+## Requirements
 
-実際の学習・生成には **CUDA GPU が必須**です。本デモのデフォルト設定は
-**NVIDIA RTX 4060 Ti 16GB（Ada 世代）** を想定しています。
+Real training and generation **require a CUDA GPU**. The default settings target
+an **NVIDIA RTX 4060 Ti 16GB (Ada generation)**.
 
-- bf16（Ada はネイティブ対応）+ 勾配チェックポイント + 小バッチで 16GB に収まるよう調整
-- `flash_attention_2`（未導入時は自動で `sdpa` にフォールバック）
-- ディスク: モデルキャッシュ（SD-Turbo + Qwen3-VL 2B ×2）で十数 GB 程度
+- bf16 (native on Ada) + gradient checkpointing + small batches to fit in 16GB
+- `flash_attention_2` (falls back automatically to `sdpa` if not installed)
+- Disk: ~10+ GB for model caches (SD-Turbo + Qwen3-VL 2B ×2)
 
-GPU が無い環境では、配線だけを確認できる [スモークテスト](#スモークテストgpu不要) を用意しています。
+If you don't have a GPU, a [smoke test](#smoke-test-no-gpu) verifies the wiring on CPU.
 
 ---
 
-## セットアップ
+## Setup
 
-[`uv`](https://docs.astral.sh/uv/) を使います。
+This project uses [`uv`](https://docs.astral.sh/uv/).
 
 ```bash
-uv sync                      # 依存をインストール
-# GPU 機では CUDA 版 torch を入れてから（環境に合わせて）:
-#   uv pip install torch --index-url https://download.pytorch.org/whl/cu124
-#   uv sync --extra gpu      # flash-attn 等の GPU 専用 extra
+uv sync                      # install dependencies
 ```
 
-> 注: `pyproject.toml` の `torch` は CPU でも import できるよう緩く指定しています。
-> GPU 機では先に CUDA ビルドの torch を入れてください。
+> **GPU / platform note:** `[tool.uv.sources]` in `pyproject.toml` pins
+> `torch` / `torchvision` to the **CUDA 12.6 build (`pytorch-cu126`) on Linux**.
+> For a different CUDA version, CPU-only, or macOS, install an appropriate
+> `torch` first or override that setting. `flash-attn` is optional (the code
+> falls back to `sdpa` automatically).
 
 ---
 
-## 使い方
+## Usage
 
 ```bash
-make all                     # フルパイプライン（GPU 推奨）
+make all                     # full pipeline (GPU recommended)
 ```
 
-これは次を順に実行します（個別にも実行可）:
+This runs the following in order (each can also be run individually):
 
-| ターゲット | 内容 |
+| Target | What it does |
 |---|---|
-| `make data`       | SD-Turbo でデータ生成 → `data/{train,eval}` に保存 |
-| `make eval-base`  | ベースモデルの検索精度 → `outputs/metrics_base.json` |
-| `make train`      | 埋め込みモデルを FT → `outputs/model/` に保存 |
-| `make eval`       | FT 後の検索精度 → `outputs/metrics_finetuned.json` |
-| `make rerank`     | 検索 top-k を Reranker で再ランク → `outputs/rerank_examples.json` |
+| `make data`            | generate data with SD-Turbo → `data/{train,eval}` |
+| `make eval-base`       | base model retrieval quality → `outputs/metrics_base.json` |
+| `make train`           | fine-tune the embedding model → `outputs/model/` |
+| `make eval`            | fine-tuned retrieval quality → `outputs/metrics_finetuned.json` |
+| `make train-reranker`  | fine-tune the reranker → `outputs/reranker/` |
+| `make rerank`          | rerank the top-k with the reranker → `outputs/rerank_examples.json` |
 
-完了後、`metrics_base.json` と `metrics_finetuned.json` を比べると NDCG / Recall の改善が確認できます。
+Afterwards, compare `metrics_base.json` vs `metrics_finetuned.json` to see the
+NDCG / Recall improvement.
 
-### 結果を可視化する（Gradio）
+### Visualize the results (Gradio)
 
-生成済みの成果物（メトリクス・データセット・リランク結果）をブラウザで確認できる
-読み取り専用ビューアを同梱しています。
+A read-only viewer for the generated artifacts (metrics, dataset, rerank results)
+is included.
 
 ```bash
 uv run python app.py        # → http://localhost:7860
 ```
 
-タブ構成: **📊 メトリクス比較**（ベース vs FT 後の棒グラフ＋差分表） /
-**🖼️ データセット閲覧**（生成画像とキャプションを 1 枚ずつ） /
-**🔄 Reranking デモ**（リランク前後の順位比較）。`outputs` / `outputs_smoke` を切り替えて閲覧できます。
+Tabs: **📊 Metrics** (base vs fine-tuned bar chart + delta table) /
+**🖼️ Dataset** (browse generated images + captions) /
+**🔄 Reranking** (rank before/after). Switch between `outputs` and `outputs_smoke`.
 
-### DVC で再現実行する（任意）
+### Reproducible runs (DVC, optional)
 
-[DVC](https://dvc.org/) パイプライン（[`dvc.yaml`](dvc.yaml)）も用意しています。各ステージの
-依存（ソース・入力）と出力を宣言してあるので、**変更があったステージだけ**を再実行できます。
+A [DVC](https://dvc.org/) pipeline ([`dvc.yaml`](dvc.yaml)) declares each stage's
+deps and outputs, so it re-runs **only the stages that changed**.
 
 ```bash
-uv run dvc repro            # 依存追跡つきでパイプラインを再現実行
-uv run dvc metrics show     # metrics_*.json を一覧表示
+uv run dvc repro            # reproduce the pipeline with dependency tracking
+uv run dvc metrics show     # list metrics_*.json
 ```
 
-`default` / `smoke` の両プロファイルが同一定義（`foreach`）から展開されます。
+Both `default` and `smoke` profiles are expanded from one definition (`foreach`).
 
-### 設定の変更
+### Changing the configuration
 
-`configs/default.yaml` を編集する（データ件数・バッチサイズ・モデル ID・画像トークン上限など）。
-別ファイルを使う場合は各コマンドに `--config path/to.yaml` を渡せます。
+Edit `configs/default.yaml` (number of samples, batch size, model IDs, image
+token caps, etc.). To use a different file, pass `--config path/to.yaml` to any command.
 
 ```bash
 uv run python -m qwen3vl_demo.train --config configs/default.yaml
@@ -118,77 +126,112 @@ uv run python -m qwen3vl_demo.train --config configs/default.yaml
 
 ---
 
-## スモークテスト（GPU不要）
+## Smoke test (no GPU)
 
-重いモデルをダウンロードせずに、パイプラインの配線（データ形式・Trainer・Evaluator・出力）が
-通るかを CPU で確認します。
+Verify the pipeline wiring (data format, Trainer, Evaluator, outputs) on CPU
+without downloading the heavy models.
 
 ```bash
 make smoke
 ```
 
-スモークプロファイル（`configs/smoke.yaml`）では:
+In the smoke profile (`configs/smoke.yaml`):
 
-- 画像生成は **合成スタブ画像**（キャプションのハッシュで色を決める単色画像）に置換
-- 埋め込みは小型の **`sentence-transformers/clip-ViT-B-32`**（CPU 可）に置換
-- リランクは **スキップ**（小型のマルチモーダル cross-encoder が無いため）
+- image generation is replaced by **synthetic stub images** (a solid color derived from the caption hash)
+- the embedding model is the small **`sentence-transformers/clip-ViT-B-32`** (CPU-friendly)
+- reranking (training and inference) is **skipped** (no small multimodal cross-encoder exists)
 
-⚠️ スモークは**配線確認専用**です。ここで出る数値に意味はありません。本番の精度は GPU で `make all` を実行してください。
-
----
-
-## 画像生成プロンプトの作り方
-
-学習データのキャプションは、[`src/qwen3vl_demo/prompts.py`](src/qwen3vl_demo/prompts.py) で
-**手書きの単語リスト × 文テンプレート**を組み合わせて合成します（外部依存なし・seed で再現可能）。
-
-- `SUBJECTS`（カテゴリ付き被写体: animal / vehicle / food / scene / object）
-- `ADJECTIVES`（形容詞）／ `SETTINGS`（情景）／ `TEMPLATES`（文型）
-
-例: `"a fluffy photo of a cat on a wooden table"`。この文がそのまま
-① SD-Turbo へのプロンプト と ② 検索評価の正解クエリ の両方になります。
-件数・seed は config で制御し、train と eval は別 seed で重複しないようにしています。
+⚠️ The smoke test is **for wiring verification only** — its numbers are meaningless.
+For real metrics, run `make all` on a GPU.
 
 ---
 
-## 構成
+## Development (tests & lint)
+
+The pure-Python parts (caption generation, config loading, stub images, negative
+mining) have lightweight unit tests that run without a GPU or heavy models. CI
+(GitHub Actions) runs ruff and pytest on CPU.
+
+```bash
+make test      # pytest (pure-Python, no GPU)
+make lint      # ruff
+```
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for how to contribute.
+
+---
+
+## How captions are generated
+
+Training captions are synthesized in
+[`src/qwen3vl_demo/prompts.py`](src/qwen3vl_demo/prompts.py) by combining
+**hand-written word lists × sentence templates** (no external deps, reproducible by seed).
+
+- `SUBJECTS` (subjects with categories: animal / vehicle / food / scene / object)
+- `ADJECTIVES`, `SETTINGS`, `TEMPLATES`
+
+Example: `"a fluffy photo of a cat on a wooden table"`. This exact string is used
+as both (1) the SD-Turbo prompt and (2) the ground-truth retrieval query.
+Counts and seeds are config-driven; train and eval use different seeds so their
+captions never overlap.
+
+---
+
+## Layout
 
 ```
 qwen3-vl-demo/
 ├── src/qwen3vl_demo/
-│   ├── config.py         # YAML -> dataclass、--config / --profile
-│   ├── prompts.py        # テンプレート組み合わせでキャプション生成
-│   ├── generate_data.py  # SD-Turbo（or スタブ）で画像生成 → datasets 保存
-│   ├── models.py         # 埋め込みモデルのロード（attn フォールバック付き）
-│   ├── evaluate.py       # InformationRetrievalEvaluator で NDCG/Recall
-│   ├── train.py          # MultipleNegativesRankingLoss で FT
-│   └── rerank.py         # 埋め込み検索 top-k → Reranker で再ランク
-├── app.py                # Gradio 結果ビューア
-├── configs/              # default.yaml（本番）/ smoke.yaml（CPU 配線確認）
-├── docs/                 # アーキテクチャ / 仕様 / 動作解説
-├── dvc.yaml              # DVC パイプライン定義
-└── Makefile              # 各ステージの実行ターゲット
+│   ├── config.py          # YAML -> dataclass, --config / --profile
+│   ├── prompts.py         # template-combination caption generation
+│   ├── generate_data.py   # SD-Turbo (or stub) image generation → datasets
+│   ├── models.py          # embedding model loading (with attn fallback)
+│   ├── evaluate.py        # InformationRetrievalEvaluator → NDCG/Recall
+│   ├── train.py           # fine-tune embeddings with MultipleNegativesRankingLoss
+│   ├── train_reranker.py  # fine-tune the reranker (negative mining + BCE)
+│   └── rerank.py          # embedding retrieval top-k → reranker
+├── app.py                 # Gradio results viewer
+├── tests/                 # pure-Python unit tests (pytest)
+├── configs/               # default.yaml (real) / smoke.yaml (CPU wiring check)
+├── docs/                  # architecture / specification / how-it-works (Japanese)
+├── dvc.yaml               # DVC pipeline definition
+└── Makefile               # per-stage run targets
 ```
 
-各モジュールの責務と相互依存は [アーキテクチャ](docs/architecture.md) を参照してください。
+See [Architecture](docs/architecture.md) for module responsibilities and dependencies.
 
 ---
 
-## 結果（例・差し替え用）
+## Results (example / fill-in)
 
-GPU で `make all` を実行後、ここに実測値を記入してください。
+After running `make all` on a GPU, record your measured numbers here.
 
-| モデル | NDCG@10 | Recall@1 | Recall@10 |
+| Model | NDCG@10 | Recall@1 | Recall@10 |
 |---|---|---|---|
-| ベース (Qwen3-VL-Embedding-2B) | _TBD_ | _TBD_ | _TBD_ |
-| ファインチューニング後 | _TBD_ | _TBD_ | _TBD_ |
-| ＋ Reranker-2B 再ランク | _TBD_ | _TBD_ | _TBD_ |
+| Base (Qwen3-VL-Embedding-2B) | _TBD_ | _TBD_ | _TBD_ |
+| Fine-tuned | _TBD_ | _TBD_ | _TBD_ |
+| + Reranker-2B | _TBD_ | _TBD_ | _TBD_ |
 
-参考: Sentence Transformers 公式の Visual Document Retrieval 例では、同モデルの FT で
-NDCG@10 が 0.888 → 0.947 に改善した報告があります。
+For reference, the official Sentence Transformers Visual Document Retrieval
+example reports fine-tuning this model improving NDCG@10 from 0.888 → 0.947.
 
 ---
 
-## ライセンス
+## License
 
-MIT（[LICENSE](LICENSE)）。使用する各モデル（Qwen3-VL, SD-Turbo, CLIP）のライセンスは各モデルカードを参照してください。
+The **code in this repository is MIT licensed** ([LICENSE](LICENSE)).
+
+However, the **models you download have their own licenses**, which may also
+apply to their outputs. Always check each model card before use.
+
+| Model | License | Note |
+|---|---|---|
+| [Qwen3-VL-Embedding-2B](https://huggingface.co/Qwen/Qwen3-VL-Embedding-2B) | Apache-2.0 | permissive |
+| [Qwen3-VL-Reranker-2B](https://huggingface.co/Qwen/Qwen3-VL-Reranker-2B) | Apache-2.0 | permissive |
+| [SD-Turbo](https://huggingface.co/stabilityai/sd-turbo) | [Stability AI Community License](https://stability.ai/license) | **Free (incl. commercial) under USD 1M annual revenue; above that requires a separate enterprise license.** Terms may apply to generated images |
+| CLIP (`clip-ViT-B-32`, smoke only) | MIT | permissive |
+
+> ⚠️ **Commercial use:** the default image-generation model SD-Turbo is under the
+> Stability AI Community License. Organizations over USD 1M annual revenue need a
+> separate license. Consider swapping the image model
+> (`image_gen.model_id` in `configs/default.yaml`) to fit your requirements.

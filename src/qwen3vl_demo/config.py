@@ -85,6 +85,11 @@ class RerankerCfg:
 
     model_id: str | None = "Qwen/Qwen3-VL-Reranker-2B"  # None ならリランク工程をスキップ
     top_k: int = 10                 # リランク対象とする検索上位件数
+    # ファインチューニング済みリランカーの保存先。学習後ここに保存し、rerank 時に
+    # 存在すれば優先して使う。
+    model_dir: str = "outputs/reranker"
+    # リランカー学習で 1 正例あたりに付与する負例（不一致ペア）の数。
+    num_negatives: int = 3
 
 
 @dataclass
@@ -135,8 +140,13 @@ class Config:
 
     @property
     def model_path(self) -> Path:
-        """ファインチューニング済みモデル保存先の絶対パス。"""
+        """ファインチューニング済み埋め込みモデル保存先の絶対パス。"""
         return self._abs(self.paths.model_dir)
+
+    @property
+    def reranker_model_path(self) -> Path:
+        """ファインチューニング済みリランカー保存先の絶対パス。"""
+        return self._abs(self.reranker.model_dir)
 
     @property
     def is_smoke(self) -> bool:

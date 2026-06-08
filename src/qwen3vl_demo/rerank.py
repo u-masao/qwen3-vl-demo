@@ -58,10 +58,16 @@ def run_rerank(cfg: Config, num_queries: int = 5) -> None:
 
     top_k = min(cfg.reranker.top_k, len(corpus_images))
 
-    print(f"第 2 段のリランクに使うモデル: {cfg.reranker.model_id}")
+    # ファインチューニング済みリランカー（train_reranker.py の出力）があればそれを使う。
+    rerank_model_id = (
+        str(cfg.reranker_model_path)
+        if cfg.reranker_model_path.exists()
+        else cfg.reranker.model_id
+    )
+    print(f"第 2 段のリランクに使うモデル: {rerank_model_id}")
     from sentence_transformers import CrossEncoder
 
-    reranker = CrossEncoder(cfg.reranker.model_id, device=cfg.device)
+    reranker = CrossEncoder(rerank_model_id, device=cfg.device)
 
     n = min(num_queries, len(eval_ds))
     examples = []

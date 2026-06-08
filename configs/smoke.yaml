@@ -34,8 +34,10 @@ embedding:
   query_prompt_name: null
 
 reranker:
-  model_id: null            # null => rerank step is skipped in smoke mode
+  model_id: null            # null => rerank AND reranker fine-tuning are skipped in smoke
   top_k: 4
+  model_dir: outputs_smoke/reranker
+  num_negatives: 2
 
 train:
   epochs: 1
