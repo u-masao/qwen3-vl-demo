@@ -85,10 +85,11 @@ This runs the following in order (each can also be run individually):
 | `make train`           | fine-tune the embedding model → `outputs/model/` |
 | `make eval`            | fine-tuned retrieval quality → `outputs/metrics_finetuned.json` |
 | `make train-reranker`  | fine-tune the reranker → `outputs/reranker/` |
-| `make rerank`          | rerank the top-k with the reranker → `outputs/rerank_examples.json` |
+| `make rerank`          | **4-way evaluation** (embedding {base,ft} × reranker {base,ft}) → `outputs/rerank_metrics.json` + examples |
 
-Afterwards, compare `metrics_base.json` vs `metrics_finetuned.json` to see the
-NDCG / Recall improvement.
+Afterwards, compare `metrics_base.json` vs `metrics_finetuned.json` (embedding
+only), and `rerank_metrics.json` for the four two-stage combinations
+(base+base / ft+base / base+ft / ft+ft) — NDCG / Recall / MRR.
 
 ### Visualize the results (Gradio)
 

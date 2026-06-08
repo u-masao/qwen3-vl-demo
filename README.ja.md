@@ -81,9 +81,11 @@ make all                     # フルパイプライン（GPU 推奨）
 | `make train`           | 埋め込みモデルを FT → `outputs/model/` に保存 |
 | `make eval`            | FT 後の検索精度 → `outputs/metrics_finetuned.json` |
 | `make train-reranker`  | リランカーを FT → `outputs/reranker/` に保存 |
-| `make rerank`          | 検索 top-k を Reranker で再ランク → `outputs/rerank_examples.json` |
+| `make rerank`          | **4 パターン評価**（埋め込み{base,ft}×リランカー{base,ft}）→ `outputs/rerank_metrics.json` ＋事例 |
 
-完了後、`metrics_base.json` と `metrics_finetuned.json` を比べると NDCG / Recall の改善が確認できます。
+完了後、`metrics_base.json` と `metrics_finetuned.json`（埋め込み単体）に加え、
+`rerank_metrics.json` で 2 段階検索の 4 パターン（base+base / ft+base / base+ft / ft+ft）の
+NDCG / Recall / MRR を比較できます。
 
 ### 結果を可視化する（Gradio）
 

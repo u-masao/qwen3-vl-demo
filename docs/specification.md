@@ -128,7 +128,8 @@
 | `<output_dir>/model/` | train | FT 済み埋め込みモデル（SentenceTransformer） |
 | `<output_dir>/checkpoints/` | train | 学習中チェックポイント（最新 1 個） |
 | `<reranker.model_dir>/` | train_reranker | FT 済みリランカー（CrossEncoder） |
-| `<output_dir>/rerank_examples.json` | rerank | リランク前後の順位事例 |
+| `<output_dir>/rerank_metrics.json` | rerank | 4 パターン（埋め込み{base,ft}×リランカー{base,ft}）の検索指標 |
+| `<output_dir>/rerank_examples.json` | rerank | リランク前後の順位事例（最良の組） |
 
 > `data/`・`outputs/`（および smoke 版）は `.gitignore` 済み。再現は設定とコードから可能です。
 

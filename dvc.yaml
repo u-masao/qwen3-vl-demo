@@ -42,7 +42,7 @@ stages:
         - ${item.output_dir}/metrics_base.json:
             cache: false
 
-  # ── ファインチューニング ────────────────────────────────────────────────────
+  # ── 埋め込みモデルのファインチューニング ────────────────────────────────────
   train:
     foreach:
       smoke:
@@ -65,7 +65,7 @@ stages:
       outs:
         - ${item.output_dir}/model
 
-  # ── ファインチューニング後評価 ──────────────────────────────────────────────
+  # ── ファインチューニング後評価（埋め込みのみ）──────────────────────────────
   eval:
     foreach:
       smoke:
@@ -88,18 +88,21 @@ stages:
         - ${item.output_dir}/metrics_finetuned.json:
             cache: false
 
-  # ── リランク (smoke は model_id=null のためスキップ扱い・出力なし) ────────
-  rerank_smoke:
-    cmd: uv run python -m qwen3vl_demo.rerank --profile smoke
+  # ── リランカーのファインチューニング ────────────────────────────────────────
+  # default のみ実行（smoke は reranker.model_id=null のため学習をスキップ＝出力なし）。
+  train_reranker:
+    cmd: uv run python -m qwen3vl_demo.train_reranker --profile default
     params:
-      - configs/smoke.yaml:
+      - configs/default.yaml:
     deps:
       - src/qwen3vl_demo/config.py
-      - src/qwen3vl_demo/models.py
-      - src/qwen3vl_demo/rerank.py
-      - data_smoke/eval
-      - outputs_smoke/model
+      - src/qwen3vl_demo/train_reranker.py
+      - data/train
+    outs:
+      - outputs/reranker
 
+  # ── 4 パターン評価（埋め込み{base,ft} × リランカー{base,ft}）＋リランク事例 ──
+  # base 埋め込み/リランカーは HF からダウンロード、ft はそれぞれの学習成果物を使う。
   rerank_default:
     cmd: uv run python -m qwen3vl_demo.rerank --profile default
     params:
@@ -110,5 +113,21 @@ stages:
       - src/qwen3vl_demo/rerank.py
       - data/eval
       - outputs/model
+      - outputs/reranker
     outs:
       - outputs/rerank_examples.json
+    metrics:
+      - outputs/rerank_metrics.json:
+          cache: false
+
+  # ── smoke の配線確認用（reranker=null のためリランクはスキップ・出力なし）──
+  rerank_smoke:
+    cmd: uv run python -m qwen3vl_demo.rerank --profile smoke
+    params:
+      - configs/smoke.yaml:
+    deps:
+      - src/qwen3vl_demo/config.py
+      - src/qwen3vl_demo/models.py
+      - src/qwen3vl_demo/rerank.py
+      - data_smoke/eval
+      - outputs_smoke/model
