@@ -12,7 +12,9 @@ dist/
 
 # Project artifacts (generated data, trained models, metrics)
 data/
+data_smoke/
 outputs/
+outputs_smoke/
 
 # HF caches that might land in-tree
 .cache/

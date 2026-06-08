@@ -1,0 +1,114 @@
+stages:
+  # ── データ生成 ─────────────────────────────────────────────────────────────
+  generate_data:
+    foreach:
+      smoke:
+        data_dir: data_smoke
+        output_dir: outputs_smoke
+      default:
+        data_dir: data
+        output_dir: outputs
+    do:
+      cmd: uv run python -m qwen3vl_demo.generate_data --profile ${key}
+      params:
+        - configs/${key}.yaml:
+      deps:
+        - src/qwen3vl_demo/config.py
+        - src/qwen3vl_demo/generate_data.py
+        - src/qwen3vl_demo/prompts.py
+      outs:
+        - ${item.data_dir}/train
+        - ${item.data_dir}/eval
+
+  # ── ベースライン評価 ────────────────────────────────────────────────────────
+  eval_base:
+    foreach:
+      smoke:
+        data_dir: data_smoke
+        output_dir: outputs_smoke
+      default:
+        data_dir: data
+        output_dir: outputs
+    do:
+      cmd: uv run python -m qwen3vl_demo.evaluate --profile ${key} --label base
+      params:
+        - configs/${key}.yaml:
+      deps:
+        - src/qwen3vl_demo/config.py
+        - src/qwen3vl_demo/evaluate.py
+        - src/qwen3vl_demo/models.py
+        - ${item.data_dir}/eval
+      metrics:
+        - ${item.output_dir}/metrics_base.json:
+            cache: false
+
+  # ── ファインチューニング ────────────────────────────────────────────────────
+  train:
+    foreach:
+      smoke:
+        data_dir: data_smoke
+        output_dir: outputs_smoke
+      default:
+        data_dir: data
+        output_dir: outputs
+    do:
+      cmd: uv run python -m qwen3vl_demo.train --profile ${key}
+      params:
+        - configs/${key}.yaml:
+      deps:
+        - src/qwen3vl_demo/config.py
+        - src/qwen3vl_demo/evaluate.py
+        - src/qwen3vl_demo/models.py
+        - src/qwen3vl_demo/train.py
+        - ${item.data_dir}/train
+        - ${item.data_dir}/eval
+      outs:
+        - ${item.output_dir}/model
+
+  # ── ファインチューニング後評価 ──────────────────────────────────────────────
+  eval:
+    foreach:
+      smoke:
+        data_dir: data_smoke
+        output_dir: outputs_smoke
+      default:
+        data_dir: data
+        output_dir: outputs
+    do:
+      cmd: uv run python -m qwen3vl_demo.evaluate --profile ${key} --finetuned
+      params:
+        - configs/${key}.yaml:
+      deps:
+        - src/qwen3vl_demo/config.py
+        - src/qwen3vl_demo/evaluate.py
+        - src/qwen3vl_demo/models.py
+        - ${item.data_dir}/eval
+        - ${item.output_dir}/model
+      metrics:
+        - ${item.output_dir}/metrics_finetuned.json:
+            cache: false
+
+  # ── リランク (smoke は model_id=null のためスキップ扱い・出力なし) ────────
+  rerank_smoke:
+    cmd: uv run python -m qwen3vl_demo.rerank --profile smoke
+    params:
+      - configs/smoke.yaml:
+    deps:
+      - src/qwen3vl_demo/config.py
+      - src/qwen3vl_demo/models.py
+      - src/qwen3vl_demo/rerank.py
+      - data_smoke/eval
+      - outputs_smoke/model
+
+  rerank_default:
+    cmd: uv run python -m qwen3vl_demo.rerank --profile default
+    params:
+      - configs/default.yaml:
+    deps:
+      - src/qwen3vl_demo/config.py
+      - src/qwen3vl_demo/models.py
+      - src/qwen3vl_demo/rerank.py
+      - data/eval
+      - outputs/model
+    outs:
+      - outputs/rerank_examples.json

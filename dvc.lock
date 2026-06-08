@@ -1,0 +1,333 @@
+schema: '2.0'
+stages:
+  generate_data@smoke:
+    cmd: uv run python -m qwen3vl_demo.generate_data --profile smoke
+    deps:
+    - path: src/qwen3vl_demo/config.py
+      hash: md5
+      md5: 168e4ab4b6d455cbdb63066b15105faa
+      size: 4868
+    - path: src/qwen3vl_demo/generate_data.py
+      hash: md5
+      md5: 0e8f8ed9f7037f990a15c3a4dac24e54
+      size: 4661
+    - path: src/qwen3vl_demo/prompts.py
+      hash: md5
+      md5: 41abe305b1264de6caa6d8dbd2d6a186
+      size: 3258
+    params:
+      configs/smoke.yaml:
+        data:
+          num_train: 8
+          num_eval: 4
+          image_size: 64
+          relevant_same_category: false
+        device: cpu
+        dtype: float32
+        embedding:
+          model_id: sentence-transformers/clip-ViT-B-32
+          attn_implementation: eager
+          max_pixels:
+          query_prompt_name:
+        image_gen:
+          model_id: stub
+          num_inference_steps: 1
+          guidance_scale: 0.0
+          batch_size: 4
+        paths:
+          data_dir: data_smoke
+          output_dir: outputs_smoke
+          model_dir: outputs_smoke/model
+        profile: smoke
+        reranker:
+          model_id:
+          top_k: 4
+        seed: 0
+        train:
+          epochs: 1
+          per_device_batch_size: 2
+          gradient_accumulation_steps: 1
+          learning_rate: 2e-05
+          warmup_ratio: 0.0
+          gradient_checkpointing: false
+          eval_steps: 5
+          save_steps: 100
+          logging_steps: 1
+    outs:
+    - path: data_smoke/eval
+      hash: md5
+      md5: 007dd4054b7e3be1072af0badbd0ffea.dir
+      size: 2383
+      nfiles: 3
+    - path: data_smoke/train
+      hash: md5
+      md5: 7d1af9da9b84366615e6f03ad31d3aca.dir
+      size: 3263
+      nfiles: 3
+  eval_base@smoke:
+    cmd: uv run python -m qwen3vl_demo.evaluate --profile smoke --label base
+    deps:
+    - path: data_smoke/eval
+      hash: md5
+      md5: 007dd4054b7e3be1072af0badbd0ffea.dir
+      size: 2383
+      nfiles: 3
+    - path: src/qwen3vl_demo/config.py
+      hash: md5
+      md5: 168e4ab4b6d455cbdb63066b15105faa
+      size: 4868
+    - path: src/qwen3vl_demo/evaluate.py
+      hash: md5
+      md5: 36de34659a73c58085b452ed8e5755e9
+      size: 3940
+    - path: src/qwen3vl_demo/models.py
+      hash: md5
+      md5: 5f74f73ec912bee977bd6e8235d605f1
+      size: 2297
+    params:
+      configs/smoke.yaml:
+        data:
+          num_train: 8
+          num_eval: 4
+          image_size: 64
+          relevant_same_category: false
+        device: cpu
+        dtype: float32
+        embedding:
+          model_id: sentence-transformers/clip-ViT-B-32
+          attn_implementation: eager
+          max_pixels:
+          query_prompt_name:
+        image_gen:
+          model_id: stub
+          num_inference_steps: 1
+          guidance_scale: 0.0
+          batch_size: 4
+        paths:
+          data_dir: data_smoke
+          output_dir: outputs_smoke
+          model_dir: outputs_smoke/model
+        profile: smoke
+        reranker:
+          model_id:
+          top_k: 4
+        seed: 0
+        train:
+          epochs: 1
+          per_device_batch_size: 2
+          gradient_accumulation_steps: 1
+          learning_rate: 2e-05
+          warmup_ratio: 0.0
+          gradient_checkpointing: false
+          eval_steps: 5
+          save_steps: 100
+          logging_steps: 1
+    outs:
+    - path: outputs_smoke/metrics_base.json
+      hash: md5
+      md5: dfeb57fa1950d3f3e0f40b7ae412cb88
+      size: 865
+  train@smoke:
+    cmd: uv run python -m qwen3vl_demo.train --profile smoke
+    deps:
+    - path: data_smoke/eval
+      hash: md5
+      md5: 007dd4054b7e3be1072af0badbd0ffea.dir
+      size: 2383
+      nfiles: 3
+    - path: data_smoke/train
+      hash: md5
+      md5: 7d1af9da9b84366615e6f03ad31d3aca.dir
+      size: 3263
+      nfiles: 3
+    - path: src/qwen3vl_demo/config.py
+      hash: md5
+      md5: 168e4ab4b6d455cbdb63066b15105faa
+      size: 4868
+    - path: src/qwen3vl_demo/evaluate.py
+      hash: md5
+      md5: 36de34659a73c58085b452ed8e5755e9
+      size: 3940
+    - path: src/qwen3vl_demo/models.py
+      hash: md5
+      md5: 5f74f73ec912bee977bd6e8235d605f1
+      size: 2297
+    - path: src/qwen3vl_demo/train.py
+      hash: md5
+      md5: 5a81a026662dd1d1a2682d446de900d5
+      size: 3210
+    params:
+      configs/smoke.yaml:
+        data:
+          num_train: 8
+          num_eval: 4
+          image_size: 64
+          relevant_same_category: false
+        device: cpu
+        dtype: float32
+        embedding:
+          model_id: sentence-transformers/clip-ViT-B-32
+          attn_implementation: eager
+          max_pixels:
+          query_prompt_name:
+        image_gen:
+          model_id: stub
+          num_inference_steps: 1
+          guidance_scale: 0.0
+          batch_size: 4
+        paths:
+          data_dir: data_smoke
+          output_dir: outputs_smoke
+          model_dir: outputs_smoke/model
+        profile: smoke
+        reranker:
+          model_id:
+          top_k: 4
+        seed: 0
+        train:
+          epochs: 1
+          per_device_batch_size: 2
+          gradient_accumulation_steps: 1
+          learning_rate: 2e-05
+          warmup_ratio: 0.0
+          gradient_checkpointing: false
+          eval_steps: 5
+          save_steps: 100
+          logging_steps: 1
+    outs:
+    - path: outputs_smoke/model
+      hash: md5
+      md5: 744548b10c13037c3c87119ffe709e0c.dir
+      size: 608818975
+      nfiles: 12
+  eval@smoke:
+    cmd: uv run python -m qwen3vl_demo.evaluate --profile smoke --finetuned
+    deps:
+    - path: data_smoke/eval
+      hash: md5
+      md5: 007dd4054b7e3be1072af0badbd0ffea.dir
+      size: 2383
+      nfiles: 3
+    - path: outputs_smoke/model
+      hash: md5
+      md5: 744548b10c13037c3c87119ffe709e0c.dir
+      size: 608818975
+      nfiles: 12
+    - path: src/qwen3vl_demo/config.py
+      hash: md5
+      md5: 168e4ab4b6d455cbdb63066b15105faa
+      size: 4868
+    - path: src/qwen3vl_demo/evaluate.py
+      hash: md5
+      md5: 36de34659a73c58085b452ed8e5755e9
+      size: 3940
+    - path: src/qwen3vl_demo/models.py
+      hash: md5
+      md5: 5f74f73ec912bee977bd6e8235d605f1
+      size: 2297
+    params:
+      configs/smoke.yaml:
+        data:
+          num_train: 8
+          num_eval: 4
+          image_size: 64
+          relevant_same_category: false
+        device: cpu
+        dtype: float32
+        embedding:
+          model_id: sentence-transformers/clip-ViT-B-32
+          attn_implementation: eager
+          max_pixels:
+          query_prompt_name:
+        image_gen:
+          model_id: stub
+          num_inference_steps: 1
+          guidance_scale: 0.0
+          batch_size: 4
+        paths:
+          data_dir: data_smoke
+          output_dir: outputs_smoke
+          model_dir: outputs_smoke/model
+        profile: smoke
+        reranker:
+          model_id:
+          top_k: 4
+        seed: 0
+        train:
+          epochs: 1
+          per_device_batch_size: 2
+          gradient_accumulation_steps: 1
+          learning_rate: 2e-05
+          warmup_ratio: 0.0
+          gradient_checkpointing: false
+          eval_steps: 5
+          save_steps: 100
+          logging_steps: 1
+    outs:
+    - path: outputs_smoke/metrics_finetuned.json
+      hash: md5
+      md5: 476f7cabbf45bff423a181de11b760a1
+      size: 864
+  rerank_smoke:
+    cmd: uv run python -m qwen3vl_demo.rerank --profile smoke
+    deps:
+    - path: data_smoke/eval
+      hash: md5
+      md5: 007dd4054b7e3be1072af0badbd0ffea.dir
+      size: 2383
+      nfiles: 3
+    - path: outputs_smoke/model
+      hash: md5
+      md5: 744548b10c13037c3c87119ffe709e0c.dir
+      size: 608818975
+      nfiles: 12
+    - path: src/qwen3vl_demo/config.py
+      hash: md5
+      md5: 168e4ab4b6d455cbdb63066b15105faa
+      size: 4868
+    - path: src/qwen3vl_demo/models.py
+      hash: md5
+      md5: 5f74f73ec912bee977bd6e8235d605f1
+      size: 2297
+    - path: src/qwen3vl_demo/rerank.py
+      hash: md5
+      md5: ccbc0c9f83d43889a33295caf9e5bd63
+      size: 4070
+    params:
+      configs/smoke.yaml:
+        data:
+          num_train: 8
+          num_eval: 4
+          image_size: 64
+          relevant_same_category: false
+        device: cpu
+        dtype: float32
+        embedding:
+          model_id: sentence-transformers/clip-ViT-B-32
+          attn_implementation: eager
+          max_pixels:
+          query_prompt_name:
+        image_gen:
+          model_id: stub
+          num_inference_steps: 1
+          guidance_scale: 0.0
+          batch_size: 4
+        paths:
+          data_dir: data_smoke
+          output_dir: outputs_smoke
+          model_dir: outputs_smoke/model
+        profile: smoke
+        reranker:
+          model_id:
+          top_k: 4
+        seed: 0
+        train:
+          epochs: 1
+          per_device_batch_size: 2
+          gradient_accumulation_steps: 1
+          learning_rate: 2e-05
+          warmup_ratio: 0.0
+          gradient_checkpointing: false
+          eval_steps: 5
+          save_steps: 100
+          logging_steps: 1
