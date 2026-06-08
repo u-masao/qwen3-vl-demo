@@ -331,3 +331,339 @@ stages:
           eval_steps: 5
           save_steps: 100
           logging_steps: 1
+  generate_data@default:
+    cmd: uv run python -m qwen3vl_demo.generate_data --profile default
+    deps:
+    - path: src/qwen3vl_demo/config.py
+      hash: md5
+      md5: 168e4ab4b6d455cbdb63066b15105faa
+      size: 4868
+    - path: src/qwen3vl_demo/generate_data.py
+      hash: md5
+      md5: 0e8f8ed9f7037f990a15c3a4dac24e54
+      size: 4661
+    - path: src/qwen3vl_demo/prompts.py
+      hash: md5
+      md5: 41abe305b1264de6caa6d8dbd2d6a186
+      size: 3258
+    params:
+      configs/default.yaml:
+        data:
+          num_train: 200
+          num_eval: 50
+          image_size: 512
+          relevant_same_category: false
+        device: cuda
+        dtype: bfloat16
+        embedding:
+          model_id: Qwen/Qwen3-VL-Embedding-2B
+          attn_implementation: flash_attention_2
+          max_pixels: 200704
+          query_prompt_name: query
+        image_gen:
+          model_id: stabilityai/sd-turbo
+          num_inference_steps: 1
+          guidance_scale: 0.0
+          batch_size: 8
+        paths:
+          data_dir: data
+          output_dir: outputs
+          model_dir: outputs/model
+        profile: default
+        reranker:
+          model_id: Qwen/Qwen3-VL-Reranker-2B
+          top_k: 10
+        seed: 42
+        train:
+          epochs: 1
+          per_device_batch_size: 4
+          gradient_accumulation_steps: 1
+          learning_rate: 2e-05
+          warmup_ratio: 0.1
+          gradient_checkpointing: true
+          eval_steps: 50
+          save_steps: 50
+          logging_steps: 10
+    outs:
+    - path: data/eval
+      hash: md5
+      md5: e6c57a4d28811fe48385b5e0ea5465cb.dir
+      size: 22110815
+      nfiles: 3
+    - path: data/train
+      hash: md5
+      md5: 435a6cdcfb4ddd28f8b4f58e8fb6a857.dir
+      size: 87712375
+      nfiles: 3
+  eval_base@default:
+    cmd: uv run python -m qwen3vl_demo.evaluate --profile default --label base
+    deps:
+    - path: data/eval
+      hash: md5
+      md5: e6c57a4d28811fe48385b5e0ea5465cb.dir
+      size: 22110815
+      nfiles: 3
+    - path: src/qwen3vl_demo/config.py
+      hash: md5
+      md5: 168e4ab4b6d455cbdb63066b15105faa
+      size: 4868
+    - path: src/qwen3vl_demo/evaluate.py
+      hash: md5
+      md5: 36de34659a73c58085b452ed8e5755e9
+      size: 3940
+    - path: src/qwen3vl_demo/models.py
+      hash: md5
+      md5: 5f74f73ec912bee977bd6e8235d605f1
+      size: 2297
+    params:
+      configs/default.yaml:
+        data:
+          num_train: 200
+          num_eval: 50
+          image_size: 512
+          relevant_same_category: false
+        device: cuda
+        dtype: bfloat16
+        embedding:
+          model_id: Qwen/Qwen3-VL-Embedding-2B
+          attn_implementation: flash_attention_2
+          max_pixels: 200704
+          query_prompt_name: query
+        image_gen:
+          model_id: stabilityai/sd-turbo
+          num_inference_steps: 1
+          guidance_scale: 0.0
+          batch_size: 8
+        paths:
+          data_dir: data
+          output_dir: outputs
+          model_dir: outputs/model
+        profile: default
+        reranker:
+          model_id: Qwen/Qwen3-VL-Reranker-2B
+          top_k: 10
+        seed: 42
+        train:
+          epochs: 1
+          per_device_batch_size: 4
+          gradient_accumulation_steps: 1
+          learning_rate: 2e-05
+          warmup_ratio: 0.1
+          gradient_checkpointing: true
+          eval_steps: 50
+          save_steps: 50
+          logging_steps: 10
+    outs:
+    - path: outputs/metrics_base.json
+      hash: md5
+      md5: 026b9a50fc6017200c1e8ee9f8b2643e
+      size: 897
+  train@default:
+    cmd: uv run python -m qwen3vl_demo.train --profile default
+    deps:
+    - path: data/eval
+      hash: md5
+      md5: e6c57a4d28811fe48385b5e0ea5465cb.dir
+      size: 22110815
+      nfiles: 3
+    - path: data/train
+      hash: md5
+      md5: 435a6cdcfb4ddd28f8b4f58e8fb6a857.dir
+      size: 87712375
+      nfiles: 3
+    - path: src/qwen3vl_demo/config.py
+      hash: md5
+      md5: 168e4ab4b6d455cbdb63066b15105faa
+      size: 4868
+    - path: src/qwen3vl_demo/evaluate.py
+      hash: md5
+      md5: 36de34659a73c58085b452ed8e5755e9
+      size: 3940
+    - path: src/qwen3vl_demo/models.py
+      hash: md5
+      md5: 5f74f73ec912bee977bd6e8235d605f1
+      size: 2297
+    - path: src/qwen3vl_demo/train.py
+      hash: md5
+      md5: 5a81a026662dd1d1a2682d446de900d5
+      size: 3210
+    params:
+      configs/default.yaml:
+        data:
+          num_train: 200
+          num_eval: 50
+          image_size: 512
+          relevant_same_category: false
+        device: cuda
+        dtype: bfloat16
+        embedding:
+          model_id: Qwen/Qwen3-VL-Embedding-2B
+          attn_implementation: flash_attention_2
+          max_pixels: 200704
+          query_prompt_name: query
+        image_gen:
+          model_id: stabilityai/sd-turbo
+          num_inference_steps: 1
+          guidance_scale: 0.0
+          batch_size: 8
+        paths:
+          data_dir: data
+          output_dir: outputs
+          model_dir: outputs/model
+        profile: default
+        reranker:
+          model_id: Qwen/Qwen3-VL-Reranker-2B
+          top_k: 10
+        seed: 42
+        train:
+          epochs: 1
+          per_device_batch_size: 4
+          gradient_accumulation_steps: 1
+          learning_rate: 2e-05
+          warmup_ratio: 0.1
+          gradient_checkpointing: true
+          eval_steps: 50
+          save_steps: 50
+          logging_steps: 10
+    outs:
+    - path: outputs/model
+      hash: md5
+      md5: d26fa1d8c68a256897a178ca9a3ec520.dir
+      size: 4266768090
+      nfiles: 14
+  eval@default:
+    cmd: uv run python -m qwen3vl_demo.evaluate --profile default --finetuned
+    deps:
+    - path: data/eval
+      hash: md5
+      md5: e6c57a4d28811fe48385b5e0ea5465cb.dir
+      size: 22110815
+      nfiles: 3
+    - path: outputs/model
+      hash: md5
+      md5: d26fa1d8c68a256897a178ca9a3ec520.dir
+      size: 4266768090
+      nfiles: 14
+    - path: src/qwen3vl_demo/config.py
+      hash: md5
+      md5: 168e4ab4b6d455cbdb63066b15105faa
+      size: 4868
+    - path: src/qwen3vl_demo/evaluate.py
+      hash: md5
+      md5: 36de34659a73c58085b452ed8e5755e9
+      size: 3940
+    - path: src/qwen3vl_demo/models.py
+      hash: md5
+      md5: 5f74f73ec912bee977bd6e8235d605f1
+      size: 2297
+    params:
+      configs/default.yaml:
+        data:
+          num_train: 200
+          num_eval: 50
+          image_size: 512
+          relevant_same_category: false
+        device: cuda
+        dtype: bfloat16
+        embedding:
+          model_id: Qwen/Qwen3-VL-Embedding-2B
+          attn_implementation: flash_attention_2
+          max_pixels: 200704
+          query_prompt_name: query
+        image_gen:
+          model_id: stabilityai/sd-turbo
+          num_inference_steps: 1
+          guidance_scale: 0.0
+          batch_size: 8
+        paths:
+          data_dir: data
+          output_dir: outputs
+          model_dir: outputs/model
+        profile: default
+        reranker:
+          model_id: Qwen/Qwen3-VL-Reranker-2B
+          top_k: 10
+        seed: 42
+        train:
+          epochs: 1
+          per_device_batch_size: 4
+          gradient_accumulation_steps: 1
+          learning_rate: 2e-05
+          warmup_ratio: 0.1
+          gradient_checkpointing: true
+          eval_steps: 50
+          save_steps: 50
+          logging_steps: 10
+    outs:
+    - path: outputs/metrics_finetuned.json
+      hash: md5
+      md5: 94da1414578c7fbc9ce4cfea306e570f
+      size: 869
+  rerank_default:
+    cmd: uv run python -m qwen3vl_demo.rerank --profile default
+    deps:
+    - path: data/eval
+      hash: md5
+      md5: e6c57a4d28811fe48385b5e0ea5465cb.dir
+      size: 22110815
+      nfiles: 3
+    - path: outputs/model
+      hash: md5
+      md5: d26fa1d8c68a256897a178ca9a3ec520.dir
+      size: 4266768090
+      nfiles: 14
+    - path: src/qwen3vl_demo/config.py
+      hash: md5
+      md5: 168e4ab4b6d455cbdb63066b15105faa
+      size: 4868
+    - path: src/qwen3vl_demo/models.py
+      hash: md5
+      md5: 5f74f73ec912bee977bd6e8235d605f1
+      size: 2297
+    - path: src/qwen3vl_demo/rerank.py
+      hash: md5
+      md5: ccbc0c9f83d43889a33295caf9e5bd63
+      size: 4070
+    params:
+      configs/default.yaml:
+        data:
+          num_train: 200
+          num_eval: 50
+          image_size: 512
+          relevant_same_category: false
+        device: cuda
+        dtype: bfloat16
+        embedding:
+          model_id: Qwen/Qwen3-VL-Embedding-2B
+          attn_implementation: flash_attention_2
+          max_pixels: 200704
+          query_prompt_name: query
+        image_gen:
+          model_id: stabilityai/sd-turbo
+          num_inference_steps: 1
+          guidance_scale: 0.0
+          batch_size: 8
+        paths:
+          data_dir: data
+          output_dir: outputs
+          model_dir: outputs/model
+        profile: default
+        reranker:
+          model_id: Qwen/Qwen3-VL-Reranker-2B
+          top_k: 10
+        seed: 42
+        train:
+          epochs: 1
+          per_device_batch_size: 4
+          gradient_accumulation_steps: 1
+          learning_rate: 2e-05
+          warmup_ratio: 0.1
+          gradient_checkpointing: true
+          eval_steps: 50
+          save_steps: 50
+          logging_steps: 10
+    outs:
+    - path: outputs/rerank_examples.json
+      hash: md5
+      md5: cc0100b8e8b6411d69b4803bbefc0262
+      size: 815
