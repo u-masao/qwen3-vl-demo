@@ -1,0 +1,48 @@
+# Default profile: local RTX 4060 Ti 16GB (Ada), bf16.
+# This is the "real" run: SD-Turbo data generation + Qwen3-VL fine-tuning.
+profile: default
+
+seed: 42
+device: cuda
+dtype: bfloat16  # Ada supports bf16 natively; more stable than fp16 for training.
+
+paths:
+  data_dir: data
+  output_dir: outputs
+  model_dir: outputs/model        # where the fine-tuned embedding model is saved
+
+data:
+  num_train: 200
+  num_eval: 50
+  image_size: 512
+  # If true, images sharing the query's category also count as relevant during
+  # evaluation (looser). Default false = strict 1:1 caption<->image relevance.
+  relevant_same_category: false
+
+image_gen:
+  model_id: stabilityai/sd-turbo
+  num_inference_steps: 1          # SD-Turbo is distilled for 1-4 steps.
+  guidance_scale: 0.0             # Turbo models disable classifier-free guidance.
+  batch_size: 8                   # images generated per pipeline call
+
+embedding:
+  model_id: Qwen/Qwen3-VL-Embedding-2B
+  attn_implementation: flash_attention_2   # falls back to sdpa if unavailable
+  # Cap image tokens to keep VRAM in check on a 16GB card.
+  max_pixels: 200704              # 512*392 ~= keep patches modest; tune as needed
+  query_prompt_name: query        # Qwen3-VL embedding uses instruction prompts
+
+reranker:
+  model_id: Qwen/Qwen3-VL-Reranker-2B
+  top_k: 10                       # how many retrieved images to rerank per query
+
+train:
+  epochs: 1
+  per_device_batch_size: 4
+  gradient_accumulation_steps: 1
+  learning_rate: 2.0e-5
+  warmup_ratio: 0.1
+  gradient_checkpointing: true
+  eval_steps: 50
+  save_steps: 50
+  logging_steps: 10

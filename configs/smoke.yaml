@@ -1,0 +1,49 @@
+# Smoke profile: CPU-only wiring check. Runs end-to-end in seconds/minutes
+# WITHOUT downloading the heavy Qwen3-VL / SD-Turbo models.
+#   - image generation is stubbed with synthetic (noise) images
+#   - embedding model is a small CPU-friendly multimodal model (CLIP)
+#   - reranking is skipped (no tiny multimodal cross-encoder exists)
+# Use this only to validate the pipeline plumbing, NOT for real metrics.
+profile: smoke
+
+seed: 0
+device: cpu
+dtype: float32
+
+paths:
+  data_dir: data_smoke
+  output_dir: outputs_smoke
+  model_dir: outputs_smoke/model
+
+data:
+  num_train: 8
+  num_eval: 4
+  image_size: 64
+  relevant_same_category: false
+
+image_gen:
+  model_id: stub            # special value: generate synthetic images, no diffusers
+  num_inference_steps: 1
+  guidance_scale: 0.0
+  batch_size: 4
+
+embedding:
+  model_id: sentence-transformers/clip-ViT-B-32   # small, multimodal, CPU-OK
+  attn_implementation: eager
+  max_pixels: null
+  query_prompt_name: null
+
+reranker:
+  model_id: null            # null => rerank step is skipped in smoke mode
+  top_k: 4
+
+train:
+  epochs: 1
+  per_device_batch_size: 2
+  gradient_accumulation_steps: 1
+  learning_rate: 2.0e-5
+  warmup_ratio: 0.0
+  gradient_checkpointing: false
+  eval_steps: 5
+  save_steps: 100
+  logging_steps: 1
