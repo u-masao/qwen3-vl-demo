@@ -5,9 +5,10 @@
 既に生成済みの ``data*/`` と ``outputs*/`` を読んで可視化するだけの読み取り専用ツール。
 
 タブ構成:
-  1. メトリクス比較   – ベース vs ファインチューニング後の棒グラフ＋数値表
-  2. データセット閲覧  – 生成したキャプション付き画像を 1 枚ずつブラウズ
-  3. Reranking デモ   – rerank_examples.json からリランク前後の順位変化を表示
+  1. メトリクス比較     – 埋め込みのベース vs FT 後の棒グラフ＋数値表
+  2. データセット閲覧    – 生成したキャプション付き画像を 1 枚ずつブラウズ
+  3. Reranking デモ     – rerank_examples.json からリランク前後の順位変化を表示
+  4. 2 段階検索 4 パターン – rerank_metrics.json（埋め込み{base,ft}×リランカー{base,ft}）を比較
 
 起動: ``uv run python app.py`` → http://localhost:7860
 """
@@ -244,6 +245,109 @@ def load_rerank_examples(output_dir_label: str) -> list[list]:
 
 
 # ---------------------------------------------------------------------------
+# タブ 4（2 段階検索の 4 パターン評価）用のヘルパ
+# ---------------------------------------------------------------------------
+
+# 2 段階パターン（埋め込み+リランカー）の表示順。先頭 4 つが主要 4 パターン、
+# 末尾の rerank=none は「リランクなし（埋め込み検索のみ）」の参考値。
+_PATTERN_ORDER = [
+    "embed=base+rerank=base",
+    "embed=ft+rerank=base",
+    "embed=base+rerank=ft",
+    "embed=ft+rerank=ft",
+    "embed=base+rerank=none",
+    "embed=ft+rerank=none",
+]
+
+
+def _pattern_label(key: str) -> str:
+    """'embed=ft+rerank=base' -> 'ft+base' のように短い表示名にする。"""
+    return key.replace("embed=", "").replace("rerank=", "")
+
+
+def _metric_sort_key(metric: str):
+    """メトリクスキーを ndcg → recall → accuracy → mrr → map、各 @k 昇順で並べる。"""
+    priority = {"ndcg": 0, "recall": 1, "accuracy": 2, "mrr": 3, "map": 4}
+    name, _, k = metric.partition("@")
+    try:
+        kk = int(k) if k else -1
+    except ValueError:
+        kk = -1
+    return (priority.get(name, 9), kk)
+
+
+def load_rerank_metrics(output_dir_label: str) -> dict:
+    """rerank_metrics.json（4 パターンの検索指標）を読み込む。無ければ空 dict。"""
+    path = OUTPUT_DIRS[output_dir_label] / "rerank_metrics.json"
+    if not path.exists():
+        return {}
+    return json.loads(path.read_text())
+
+
+def _ordered_patterns(metrics: dict) -> list[str]:
+    """既知の表示順を優先しつつ、未知のキーは末尾に回す。"""
+    ordered = [k for k in _PATTERN_ORDER if k in metrics]
+    ordered += [k for k in metrics if k not in ordered]
+    return ordered
+
+
+def _ordered_metric_keys(metrics: dict) -> list[str]:
+    """全パターンに現れるメトリクスキーの和集合を、見やすい順に並べる。"""
+    keys: set[str] = set()
+    for v in metrics.values():
+        keys.update(v.keys())
+    return sorted(keys, key=_metric_sort_key)
+
+
+def make_rerank_metrics_table(output_dir_label: str) -> tuple[list[str], list[list]]:
+    """4 パターン×全メトリクスの表（ヘッダ, 行）を返す。"""
+    metrics = load_rerank_metrics(output_dir_label)
+    if not metrics:
+        return ["パターン"], []
+    mkeys = _ordered_metric_keys(metrics)
+    headers = ["パターン (埋め込み+リランカー)"] + mkeys
+    rows = []
+    for key in _ordered_patterns(metrics):
+        v = metrics[key]
+        rows.append([_pattern_label(key)] + [f"{v.get(m, 0.0):.4f}" for m in mkeys])
+    return headers, rows
+
+
+def make_rerank_metrics_figure(output_dir_label: str):
+    """主要 4 パターンを各メトリクスでグループ化した棒グラフを作る。"""
+    metrics = load_rerank_metrics(output_dir_label)
+    if not metrics:
+        fig, ax = plt.subplots()
+        ax.text(0.5, 0.5, "rerank_metrics.json が見つかりません", ha="center", va="center")
+        return fig
+
+    # 図は主要 4 パターンに絞る（rerank=none の参考値は表のみ）。
+    patterns = [k for k in _ordered_patterns(metrics) if not k.endswith("rerank=none")]
+    if not patterns:
+        patterns = _ordered_patterns(metrics)
+    mkeys = _ordered_metric_keys(metrics)
+
+    x = np.arange(len(mkeys))
+    width = 0.8 / max(1, len(patterns))
+
+    fig, ax = plt.subplots(figsize=(12, 5))
+    for i, key in enumerate(patterns):
+        vals = [metrics[key].get(m, 0.0) for m in mkeys]
+        offset = (i - (len(patterns) - 1) / 2) * width
+        ax.bar(x + offset, vals, width, label=_pattern_label(key))
+
+    ax.set_xticks(x)
+    ax.set_xticklabels(mkeys, rotation=30, ha="right", fontsize=9)
+    ax.set_ylim(0, 1.05)
+    ax.set_ylabel("Score")
+    ax.set_title(f"2 段階検索 4 パターン比較 — {output_dir_label}", fontsize=11, fontweight="bold")
+    ax.legend(title="埋め込み+リランカー", fontsize=8)
+    ax.grid(axis="y", linestyle="--", alpha=0.4)
+    fig.tight_layout()
+    return fig
+
+
+# ---------------------------------------------------------------------------
 # UI 構築
 # ---------------------------------------------------------------------------
 
@@ -368,6 +472,32 @@ def build_app() -> gr.Blocks:
 
                 rerank_dir_dd.change(_load_rerank, inputs=rerank_dir_dd, outputs=rerank_table)
                 demo.load(_load_rerank, inputs=rerank_dir_dd, outputs=rerank_table)
+
+            # ----------------------------------------------------------------
+            # タブ 4: 2 段階検索 4 パターン評価
+            # ----------------------------------------------------------------
+            with gr.Tab("🔀 2段階検索 (4パターン)"):
+                gr.Markdown(
+                    "埋め込み{base, ft} × リランカー{base, ft} の **4 パターン**で "
+                    "2 段階検索（retrieve → rerank）の精度を比較します"
+                    "（`rerank_metrics.json`）。`rerank=none` は埋め込み検索のみの参考値です。"
+                )
+                rr4_dir_dd = gr.Dropdown(
+                    choices=output_dir_choices,
+                    value=output_dir_choices[0],
+                    label="出力ディレクトリ",
+                    interactive=True,
+                )
+                rr4_plot = gr.Plot(label="4 パターン比較（埋め込み × リランカー）")
+                rr4_table = gr.Dataframe(label="全メトリクス", interactive=False, wrap=True)
+
+                def _refresh_rr4(label):
+                    """ドロップダウン変更時／初期表示時にグラフと表を再生成する。"""
+                    headers, rows = make_rerank_metrics_table(label)
+                    return make_rerank_metrics_figure(label), gr.Dataframe(value=rows, headers=headers)
+
+                rr4_dir_dd.change(_refresh_rr4, inputs=rr4_dir_dd, outputs=[rr4_plot, rr4_table])
+                demo.load(_refresh_rr4, inputs=rr4_dir_dd, outputs=[rr4_plot, rr4_table])
 
     return demo
 

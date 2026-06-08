@@ -100,9 +100,11 @@ is included.
 uv run python app.py        # → http://localhost:7860
 ```
 
-Tabs: **📊 Metrics** (base vs fine-tuned bar chart + delta table) /
+Tabs: **📊 Metrics** (embedding base vs fine-tuned bar chart + delta table) /
 **🖼️ Dataset** (browse generated images + captions) /
-**🔄 Reranking** (rank before/after). Switch between `outputs` and `outputs_smoke`.
+**🔄 Reranking** (rank before/after) /
+**🔀 Two-stage (4 patterns)** (embedding × reranker 4-way comparison chart + table).
+Switch between `outputs` and `outputs_smoke`.
 
 ### Reproducible runs (DVC, optional)
 
