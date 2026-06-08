@@ -1,0 +1,63 @@
+# FLUX profile: same as `default`, but generate data with FLUX.2-klein-4b-fp8.
+#
+# FLUX.2 [klein] 4B (Apache-2.0) is a step-distilled rectified-flow model — a
+# permissive alternative to SD-Turbo (no Stability non-commercial terms). The
+# fp8 checkpoint keeps VRAM low (~4 GB), so it fits comfortably on a 16GB card.
+#
+# Usage:
+#   make data PROFILE=flux        # generate images with FLUX.2-klein
+#   make train ... PROFILE=flux   # (or just run the whole pipeline with PROFILE=flux)
+#
+# Requirements / notes:
+#   * Needs a recent `diffusers` with FLUX.2 (Flux2) support — upgrade if needed.
+#   * `black-forest-labs/FLUX.2-klein-4b-fp8` ships a single-file checkpoint; if
+#     AutoPipelineForText2Image can't load it in your diffusers version, use the
+#     diffusers-format mirror `Photoroom/FLUX.2-klein-4b-fp8-diffusers` (or the
+#     base repo `black-forest-labs/FLUX.2-klein-4B`).
+#   * Paths match the `default` profile (data/ and outputs/), so FLUX-generated
+#     data is a drop-in replacement for the rest of the pipeline.
+profile: flux
+
+seed: 42
+device: cuda
+dtype: bfloat16
+
+paths:
+  data_dir: data
+  output_dir: outputs
+  model_dir: outputs/model
+
+data:
+  num_train: 200
+  num_eval: 50
+  image_size: 512
+  relevant_same_category: false
+
+image_gen:
+  model_id: black-forest-labs/FLUX.2-klein-4b-fp8
+  num_inference_steps: 4          # FLUX.2-klein is step-distilled to 4 steps.
+  guidance_scale: 1.0             # reference setting for the 4B model.
+  batch_size: 4                   # FLUX is heavier than SD-Turbo; smaller batches.
+
+embedding:
+  model_id: Qwen/Qwen3-VL-Embedding-2B
+  attn_implementation: flash_attention_2
+  max_pixels: 200704
+  query_prompt_name: query
+
+reranker:
+  model_id: Qwen/Qwen3-VL-Reranker-2B
+  top_k: 10
+  model_dir: outputs/reranker
+  num_negatives: 3
+
+train:
+  epochs: 1
+  per_device_batch_size: 4
+  gradient_accumulation_steps: 1
+  learning_rate: 2.0e-5
+  warmup_ratio: 0.1
+  gradient_checkpointing: true
+  eval_steps: 50
+  save_steps: 50
+  logging_steps: 10

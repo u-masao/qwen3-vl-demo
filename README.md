@@ -129,6 +129,30 @@ uv run python -m qwen3vl_demo.train --config configs/default.yaml
 
 ---
 
+## Choosing the image-generation model (SD-Turbo / FLUX.2-klein)
+
+Image generation is loaded via `AutoPipelineForText2Image`, so **any diffusers
+text-to-image model** can be set as `image_gen.model_id`. Two presets are provided:
+
+| Preset | Model | License | Recommended settings |
+|---|---|---|---|
+| `default` | [SD-Turbo](https://huggingface.co/stabilityai/sd-turbo) | Stability AI Community | steps=1, guidance=0.0 |
+| `flux` | [FLUX.2-klein-4b-fp8](https://huggingface.co/black-forest-labs/FLUX.2-klein-4b-fp8) | **Apache-2.0** | steps=4, guidance=1.0 |
+
+```bash
+make data PROFILE=flux        # generate with FLUX.2-klein (use PROFILE=flux for later stages too)
+```
+
+- **FLUX.2-klein is Apache-2.0**, so it avoids SD-Turbo's commercial restrictions (~4 GB VRAM in fp8).
+- Loading FLUX.2 needs a **recent `diffusers` with FLUX.2 support** — upgrade if needed.
+- `black-forest-labs/FLUX.2-klein-4b-fp8` is a single-file checkpoint; if
+  `AutoPipelineForText2Image` can't load it in your diffusers version, point
+  `image_gen.model_id` in `configs/flux.yaml` at the diffusers-format mirror
+  [`Photoroom/FLUX.2-klein-4b-fp8-diffusers`](https://huggingface.co/Photoroom/FLUX.2-klein-4b-fp8-diffusers)
+  or [`black-forest-labs/FLUX.2-klein-4B`](https://huggingface.co/black-forest-labs/FLUX.2-klein-4B).
+
+---
+
 ## Smoke test (no GPU)
 
 Verify the pipeline wiring (data format, Trainer, Evaluator, outputs) on CPU
@@ -231,10 +255,11 @@ apply to their outputs. Always check each model card before use.
 |---|---|---|
 | [Qwen3-VL-Embedding-2B](https://huggingface.co/Qwen/Qwen3-VL-Embedding-2B) | Apache-2.0 | permissive |
 | [Qwen3-VL-Reranker-2B](https://huggingface.co/Qwen/Qwen3-VL-Reranker-2B) | Apache-2.0 | permissive |
-| [SD-Turbo](https://huggingface.co/stabilityai/sd-turbo) | [Stability AI Community License](https://stability.ai/license) | **Free (incl. commercial) under USD 1M annual revenue; above that requires a separate enterprise license.** Terms may apply to generated images |
+| [SD-Turbo](https://huggingface.co/stabilityai/sd-turbo) (image gen, default) | [Stability AI Community License](https://stability.ai/license) | **Free (incl. commercial) under USD 1M annual revenue; above that requires a separate enterprise license.** Terms may apply to generated images |
+| [FLUX.2-klein-4b-fp8](https://huggingface.co/black-forest-labs/FLUX.2-klein-4b-fp8) (image gen, `flux` preset) | Apache-2.0 | permissive; recommended if you need to avoid commercial restrictions |
 | CLIP (`clip-ViT-B-32`, smoke only) | MIT | permissive |
 
 > ⚠️ **Commercial use:** the default image-generation model SD-Turbo is under the
 > Stability AI Community License. Organizations over USD 1M annual revenue need a
-> separate license. Consider swapping the image model
-> (`image_gen.model_id` in `configs/default.yaml`) to fit your requirements.
+> separate license. To avoid the restriction, switch to **`PROFILE=flux`
+> (Apache-2.0 FLUX.2-klein)** or change `image_gen.model_id`.

@@ -20,6 +20,8 @@ data:
   relevant_same_category: false
 
 image_gen:
+  # Any diffusers text-to-image model works (loaded via AutoPipelineForText2Image).
+  # Alternative: FLUX.2-klein (Apache-2.0) — see configs/flux.yaml.
   model_id: stabilityai/sd-turbo
   num_inference_steps: 1          # SD-Turbo is distilled for 1-4 steps.
   guidance_scale: 0.0             # Turbo models disable classifier-free guidance.

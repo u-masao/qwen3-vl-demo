@@ -2,8 +2,9 @@
 
 prompts.py が作ったキャプション 1 文ごとに、対応する画像を 1 枚レンダリングする:
 
-  * ``default`` プロファイル → Stable Diffusion Turbo（``stabilityai/sd-turbo``）で実生成
-  * ``smoke``   プロファイル → 安価な合成スタブ画像（モデルのダウンロード不要・CPU 可）
+  * 通常（GPU）  → diffusers の text-to-image モデルで実生成。``image_gen.model_id`` で
+                   SD-Turbo（既定）/ FLUX.2-klein（configs/flux.yaml）などを切り替えられる
+  * ``smoke``    → 安価な合成スタブ画像（モデルのダウンロード不要・CPU 可）
 
 結果は ``datasets.Dataset`` の 2 スプリットとして ``<data_dir>/train`` と
 ``<data_dir>/eval`` に保存する。各行のカラムは以下:
@@ -48,8 +49,15 @@ def _generate_stub(samples: list[Sample], size: int) -> list[Image.Image]:
     return [_stub_image(s.text, size) for s in samples]
 
 
-def _generate_sd_turbo(samples: list[Sample], cfg: Config) -> list[Image.Image]:
-    """SD-Turbo で画像をレンダリングする。
+def _generate_with_diffusers(samples: list[Sample], cfg: Config) -> list[Image.Image]:
+    """diffusers の text-to-image モデルで画像をレンダリングする（モデル非依存）。
+
+    ``AutoPipelineForText2Image`` がリポジトリの種類を自動判別するため、SD-Turbo でも
+    FLUX.2-klein でも同じコードで動く。モデルごとの違い（ステップ数・guidance）は
+    すべて設定（``image_gen.num_inference_steps`` / ``guidance_scale``）で吸収する:
+
+      * ``stabilityai/sd-turbo``                  → steps=1, guidance=0.0
+      * ``black-forest-labs/FLUX.2-klein-4b-fp8`` → steps=4, guidance=1.0（configs/flux.yaml）
 
     diffusers / torch はここで遅延 import する。これによりスモークモード
     （スタブ画像）では GPU 系の重い依存を一切ロードしない。
@@ -74,8 +82,8 @@ def _generate_sd_turbo(samples: list[Sample], cfg: Config) -> list[Image.Image]:
         prompts = [s.text for s in batch]
         out = pipe(
             prompt=prompts,
-            num_inference_steps=cfg.image_gen.num_inference_steps,  # SD-Turbo は 1〜4
-            guidance_scale=cfg.image_gen.guidance_scale,            # Turbo は 0.0
+            num_inference_steps=cfg.image_gen.num_inference_steps,  # モデルに応じて設定
+            guidance_scale=cfg.image_gen.guidance_scale,            # 同上
             height=cfg.data.image_size,
             width=cfg.data.image_size,
             generator=generator,
@@ -123,9 +131,9 @@ def generate_dataset(cfg: Config) -> None:
         eval_images = _generate_stub(eval_samples, cfg.data.image_size)
     else:
         print("train スプリット:")
-        train_images = _generate_sd_turbo(train_samples, cfg)
+        train_images = _generate_with_diffusers(train_samples, cfg)
         print("eval スプリット:")
-        eval_images = _generate_sd_turbo(eval_samples, cfg)
+        eval_images = _generate_with_diffusers(eval_samples, cfg)
 
     train_ds = _build_split(train_samples, train_images)
     eval_ds = _build_split(eval_samples, eval_images)

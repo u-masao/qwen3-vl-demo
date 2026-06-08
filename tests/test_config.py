@@ -25,6 +25,16 @@ def test_load_smoke_profile():
     assert cfg.reranker.model_id is None
 
 
+def test_load_flux_profile():
+    cfg = load_config(REPO_ROOT / "configs" / "flux.yaml")
+    assert cfg.profile == "flux"
+    assert cfg.is_smoke is False
+    # FLUX.2-klein を使い、4 ステップ蒸留・guidance=1.0 が設定されていること。
+    assert "FLUX.2-klein" in cfg.image_gen.model_id
+    assert cfg.image_gen.num_inference_steps == 4
+    assert cfg.image_gen.guidance_scale == 1.0
+
+
 def test_paths_resolve_to_absolute():
     cfg = load_config(REPO_ROOT / "configs" / "default.yaml")
     for p in (cfg.data_path, cfg.output_path, cfg.model_path, cfg.reranker_model_path):

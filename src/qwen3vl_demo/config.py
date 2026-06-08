@@ -196,8 +196,7 @@ def add_config_args(parser: argparse.ArgumentParser) -> None:
         "--profile",
         type=str,
         default="default",
-        choices=["default", "smoke"],
-        help="configs/<profile>.yaml を選ぶショートカット（既定: default）。",
+        help="configs/<profile>.yaml を選ぶショートカット（例: default / smoke / flux、既定: default）。",
     )
 
 

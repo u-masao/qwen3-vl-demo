@@ -125,6 +125,30 @@ uv run python -m qwen3vl_demo.train --config configs/default.yaml
 
 ---
 
+## 画像生成モデルの切り替え（SD-Turbo / FLUX.2-klein）
+
+画像生成は `AutoPipelineForText2Image` でロードするため、**任意の diffusers text-to-image
+モデル**を `image_gen.model_id` に指定できます。プリセットを 2 つ用意しています。
+
+| プリセット | モデル | ライセンス | 推奨設定 |
+|---|---|---|---|
+| `default` | [SD-Turbo](https://huggingface.co/stabilityai/sd-turbo) | Stability AI Community | steps=1, guidance=0.0 |
+| `flux` | [FLUX.2-klein-4b-fp8](https://huggingface.co/black-forest-labs/FLUX.2-klein-4b-fp8) | **Apache-2.0** | steps=4, guidance=1.0 |
+
+```bash
+make data PROFILE=flux        # FLUX.2-klein で生成（以降も PROFILE=flux で通せます）
+```
+
+- **FLUX.2-klein は Apache-2.0** なので、SD-Turbo のような商用上の制約がありません（fp8 で VRAM 約 4GB）。
+- FLUX.2 のロードには **FLUX.2 対応の新しめの `diffusers`** が必要です（古い場合は更新してください）。
+- `black-forest-labs/FLUX.2-klein-4b-fp8` は単一ファイル形式のため、お使いの diffusers で
+  `AutoPipelineForText2Image` が読めない場合は、diffusers 形式ミラー
+  [`Photoroom/FLUX.2-klein-4b-fp8-diffusers`](https://huggingface.co/Photoroom/FLUX.2-klein-4b-fp8-diffusers)
+  または [`black-forest-labs/FLUX.2-klein-4B`](https://huggingface.co/black-forest-labs/FLUX.2-klein-4B)
+  を `configs/flux.yaml` の `image_gen.model_id` に指定してください。
+
+---
+
 ## スモークテスト（GPU不要）
 
 重いモデルをダウンロードせずに、パイプラインの配線（データ形式・Trainer・Evaluator・出力）が
@@ -224,9 +248,10 @@ NDCG@10 が 0.888 → 0.947 に改善した報告があります。
 |---|---|---|
 | [Qwen3-VL-Embedding-2B](https://huggingface.co/Qwen/Qwen3-VL-Embedding-2B) | Apache-2.0 | 寛容 |
 | [Qwen3-VL-Reranker-2B](https://huggingface.co/Qwen/Qwen3-VL-Reranker-2B) | Apache-2.0 | 寛容 |
-| [SD-Turbo](https://huggingface.co/stabilityai/sd-turbo) | [Stability AI Community License](https://stability.ai/license) | **年商 100 万ドル未満なら商用含め無償／超える場合は別途エンタープライズ契約が必要**。生成画像にも条件が及びます |
+| [SD-Turbo](https://huggingface.co/stabilityai/sd-turbo)（画像生成・既定） | [Stability AI Community License](https://stability.ai/license) | **年商 100 万ドル未満なら商用含め無償／超える場合は別途エンタープライズ契約が必要**。生成画像にも条件が及びます |
+| [FLUX.2-klein-4b-fp8](https://huggingface.co/black-forest-labs/FLUX.2-klein-4b-fp8)（画像生成・`flux` プリセット） | Apache-2.0 | 寛容。商用制約を避けたい場合の推奨 |
 | CLIP（`clip-ViT-B-32`、smoke 用） | MIT | 寛容 |
 
 > ⚠️ **商用利用の注意**: 既定の画像生成モデル SD-Turbo は Stability AI Community License です。
-> 年商が 100 万ドルを超える組織での商用利用には別途ライセンスが必要になります。要件に応じて
-> 画像生成モデルの差し替えを検討してください（`configs/default.yaml` の `image_gen.model_id`）。
+> 年商が 100 万ドルを超える組織での商用利用には別途ライセンスが必要になります。制約を避けたい場合は
+> **`PROFILE=flux`（Apache-2.0 の FLUX.2-klein）** に切り替えるか、`image_gen.model_id` を差し替えてください。

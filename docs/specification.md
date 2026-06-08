@@ -29,7 +29,8 @@
 
 | 役割 | モデル | ライセンス | 備考 |
 |---|---|---|---|
-| 画像生成 | [`stabilityai/sd-turbo`](https://huggingface.co/stabilityai/sd-turbo) | [Stability AI Community License](https://stability.ai/license) | 1〜4 ステップの蒸留モデル。guidance なし |
+| 画像生成（既定） | [`stabilityai/sd-turbo`](https://huggingface.co/stabilityai/sd-turbo) | [Stability AI Community License](https://stability.ai/license) | 1〜4 ステップの蒸留モデル。guidance なし。`configs/default.yaml` |
+| 画像生成（代替・`flux`） | [`black-forest-labs/FLUX.2-klein-4b-fp8`](https://huggingface.co/black-forest-labs/FLUX.2-klein-4b-fp8) | Apache-2.0 | 4 ステップ蒸留・guidance=1.0・fp8 で約 4GB。商用制約なし。`configs/flux.yaml`。FLUX.2 対応の新しめ diffusers が必要 |
 | 埋め込み（FT 対象） | [`Qwen/Qwen3-VL-Embedding-2B`](https://huggingface.co/Qwen/Qwen3-VL-Embedding-2B) | Apache-2.0 | テキスト・画像を同一空間に埋め込む |
 | リランカー（FT＋推論） | [`Qwen/Qwen3-VL-Reranker-2B`](https://huggingface.co/Qwen/Qwen3-VL-Reranker-2B) | Apache-2.0 | cross-encoder。クエリ×文書を精密スコア |
 | 埋め込み（smoke 代替） | `sentence-transformers/clip-ViT-B-32` | MIT | 小型・CPU 可。配線確認専用 |
@@ -102,7 +103,8 @@
 
 ## 5. CLI 仕様
 
-全エントリポイント共通で `--config PATH`（優先）と `--profile {default,smoke}` を受け付けます。
+全エントリポイント共通で `--config PATH`（優先）と `--profile NAME`（`configs/NAME.yaml`、
+既定 `default`。`smoke` / `flux` などの任意プリセット名も可）を受け付けます。
 
 | コマンド | 追加引数 | 説明 |
 |---|---|---|
