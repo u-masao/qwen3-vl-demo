@@ -62,6 +62,7 @@ def load_embedding_model(cfg: Config, model_id: str | None = None):
         # flash-attn 未導入、またはプロセッサ引数が非対応 → sdpa で再試行する。
         if model_kwargs.get("attn_implementation") == "flash_attention_2":
             logger.warning("  flash_attention_2 が使えません（%s）。sdpa で再試行します", exc)
+            logger.warning("  flash-attn を有効にするには: uv sync --extra gpu")
             model_kwargs["attn_implementation"] = "sdpa"
             try:
                 model = _build(model_kwargs, processor_kwargs)
@@ -74,4 +75,6 @@ def load_embedding_model(cfg: Config, model_id: str | None = None):
             # flash_attention_2 以外の理由での失敗はフォールバックせず、そのまま送出する。
             raise
 
+    used = model_kwargs.get("attn_implementation", "モデル既定")
+    logger.info("  attn_implementation: %s", used)
     return model

@@ -49,9 +49,9 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-# Extras that only make sense on the GPU box. Installed explicitly there.
+# Extras that only make sense on the GPU box. Install with: uv sync --extra gpu
 gpu = [
-    # "flash-attn>=2.6.0; platform_system == 'Linux'",
+    "flash-attn>=2.6.0; platform_system == 'Linux'",
     # "bitsandbytes>=0.43.0",
 ]
 dev = [

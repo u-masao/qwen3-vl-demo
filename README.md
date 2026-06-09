@@ -60,13 +60,15 @@ This project uses [`uv`](https://docs.astral.sh/uv/).
 
 ```bash
 uv sync                      # install dependencies
+uv sync --extra gpu          # + flash-attn (recommended on CUDA GPU)
 ```
 
 > **GPU / platform note:** `[tool.uv.sources]` in `pyproject.toml` pins
 > `torch` / `torchvision` to the **CUDA 12.6 build (`pytorch-cu126`) on Linux**.
 > For a different CUDA version, CPU-only, or macOS, install an appropriate
-> `torch` first or override that setting. `flash-attn` is optional (the code
-> falls back to `sdpa` automatically).
+> `torch` first or override that setting.
+> `--extra gpu` installs `flash-attn`; without it the code falls back to `sdpa`
+> automatically, but performance will be lower.
 
 ---
 
