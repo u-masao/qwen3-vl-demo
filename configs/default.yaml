@@ -1,5 +1,5 @@
 # Default profile: local RTX 4060 Ti 16GB (Ada), bf16.
-# This is the "real" run: SD-Turbo data generation + Qwen3-VL fine-tuning.
+# This is the "real" run: FLUX.2-klein data generation + Qwen3-VL fine-tuning.
 profile: default
 
 seed: 42
@@ -20,12 +20,11 @@ data:
   relevant_same_category: false
 
 image_gen:
-  # Any diffusers text-to-image model works (loaded via AutoPipelineForText2Image).
-  # Alternative: FLUX.2-klein (Apache-2.0) — see configs/flux.yaml.
-  model_id: stabilityai/sd-turbo
-  num_inference_steps: 1          # SD-Turbo is distilled for 1-4 steps.
-  guidance_scale: 0.0             # Turbo models disable classifier-free guidance.
-  batch_size: 8                   # images generated per pipeline call
+  # FLUX.2-klein-4B (Apache-2.0) — step-distilled rectified-flow model.
+  model_id: black-forest-labs/FLUX.2-klein-4B
+  num_inference_steps: 4          # FLUX.2-klein is distilled to 4 steps.
+  guidance_scale: 1.0             # reference setting for the 4B model.
+  batch_size: 4                   # FLUX is heavier than SD-Turbo; smaller batches.
 
 embedding:
   model_id: Qwen/Qwen3-VL-Embedding-2B

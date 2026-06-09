@@ -19,6 +19,7 @@ import json
 from pathlib import Path
 
 import gradio as gr
+import japanize_matplotlib  # noqa: F401  日本語フォントを自動設定
 import matplotlib
 import matplotlib.pyplot as plt
 import numpy as np

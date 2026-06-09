@@ -5,16 +5,16 @@ stages:
     deps:
     - path: src/qwen3vl_demo/config.py
       hash: md5
-      md5: 168e4ab4b6d455cbdb63066b15105faa
-      size: 4868
+      md5: 16f8543e1687864373aa840b10cccb5c
+      size: 9975
     - path: src/qwen3vl_demo/generate_data.py
       hash: md5
-      md5: 0e8f8ed9f7037f990a15c3a4dac24e54
-      size: 4661
+      md5: d094ac1e88cf85d36bc0d7af515d1d56
+      size: 7283
     - path: src/qwen3vl_demo/prompts.py
       hash: md5
-      md5: 41abe305b1264de6caa6d8dbd2d6a186
-      size: 3258
+      md5: 93e48b48e7497c9ed5163f0f897ce3dc
+      size: 5868
     params:
       configs/smoke.yaml:
         data:
@@ -42,6 +42,8 @@ stages:
         reranker:
           model_id:
           top_k: 4
+          model_dir: outputs_smoke/reranker
+          num_negatives: 2
         seed: 0
         train:
           epochs: 1
@@ -74,16 +76,16 @@ stages:
       nfiles: 3
     - path: src/qwen3vl_demo/config.py
       hash: md5
-      md5: 168e4ab4b6d455cbdb63066b15105faa
-      size: 4868
+      md5: 16f8543e1687864373aa840b10cccb5c
+      size: 9975
     - path: src/qwen3vl_demo/evaluate.py
       hash: md5
-      md5: 36de34659a73c58085b452ed8e5755e9
-      size: 3940
+      md5: 6bdeb86d8b81755aadc3ea584e5302ab
+      size: 6180
     - path: src/qwen3vl_demo/models.py
       hash: md5
-      md5: 5f74f73ec912bee977bd6e8235d605f1
-      size: 2297
+      md5: c4c9d5648ee27c0c48a56a0dbd17d7ba
+      size: 3775
     params:
       configs/smoke.yaml:
         data:
@@ -111,6 +113,8 @@ stages:
         reranker:
           model_id:
           top_k: 4
+          model_dir: outputs_smoke/reranker
+          num_negatives: 2
         seed: 0
         train:
           epochs: 1
@@ -142,20 +146,20 @@ stages:
       nfiles: 3
     - path: src/qwen3vl_demo/config.py
       hash: md5
-      md5: 168e4ab4b6d455cbdb63066b15105faa
-      size: 4868
+      md5: 16f8543e1687864373aa840b10cccb5c
+      size: 9975
     - path: src/qwen3vl_demo/evaluate.py
       hash: md5
-      md5: 36de34659a73c58085b452ed8e5755e9
-      size: 3940
+      md5: 6bdeb86d8b81755aadc3ea584e5302ab
+      size: 6180
     - path: src/qwen3vl_demo/models.py
       hash: md5
-      md5: 5f74f73ec912bee977bd6e8235d605f1
-      size: 2297
+      md5: c4c9d5648ee27c0c48a56a0dbd17d7ba
+      size: 3775
     - path: src/qwen3vl_demo/train.py
       hash: md5
-      md5: 5a81a026662dd1d1a2682d446de900d5
-      size: 3210
+      md5: 6361b2025bb7f5fa22901e5c226631ba
+      size: 4820
     params:
       configs/smoke.yaml:
         data:
@@ -183,6 +187,8 @@ stages:
         reranker:
           model_id:
           top_k: 4
+          model_dir: outputs_smoke/reranker
+          num_negatives: 2
         seed: 0
         train:
           epochs: 1
@@ -197,7 +203,7 @@ stages:
     outs:
     - path: outputs_smoke/model
       hash: md5
-      md5: 744548b10c13037c3c87119ffe709e0c.dir
+      md5: db096c87038038fc6c73c0d01dad0a3b.dir
       size: 608818975
       nfiles: 12
   eval@smoke:
@@ -210,21 +216,21 @@ stages:
       nfiles: 3
     - path: outputs_smoke/model
       hash: md5
-      md5: 744548b10c13037c3c87119ffe709e0c.dir
+      md5: db096c87038038fc6c73c0d01dad0a3b.dir
       size: 608818975
       nfiles: 12
     - path: src/qwen3vl_demo/config.py
       hash: md5
-      md5: 168e4ab4b6d455cbdb63066b15105faa
-      size: 4868
+      md5: 16f8543e1687864373aa840b10cccb5c
+      size: 9975
     - path: src/qwen3vl_demo/evaluate.py
       hash: md5
-      md5: 36de34659a73c58085b452ed8e5755e9
-      size: 3940
+      md5: 6bdeb86d8b81755aadc3ea584e5302ab
+      size: 6180
     - path: src/qwen3vl_demo/models.py
       hash: md5
-      md5: 5f74f73ec912bee977bd6e8235d605f1
-      size: 2297
+      md5: c4c9d5648ee27c0c48a56a0dbd17d7ba
+      size: 3775
     params:
       configs/smoke.yaml:
         data:
@@ -252,6 +258,8 @@ stages:
         reranker:
           model_id:
           top_k: 4
+          model_dir: outputs_smoke/reranker
+          num_negatives: 2
         seed: 0
         train:
           epochs: 1
@@ -278,21 +286,21 @@ stages:
       nfiles: 3
     - path: outputs_smoke/model
       hash: md5
-      md5: 744548b10c13037c3c87119ffe709e0c.dir
+      md5: db096c87038038fc6c73c0d01dad0a3b.dir
       size: 608818975
       nfiles: 12
     - path: src/qwen3vl_demo/config.py
       hash: md5
-      md5: 168e4ab4b6d455cbdb63066b15105faa
-      size: 4868
+      md5: 16f8543e1687864373aa840b10cccb5c
+      size: 9975
     - path: src/qwen3vl_demo/models.py
       hash: md5
-      md5: 5f74f73ec912bee977bd6e8235d605f1
-      size: 2297
+      md5: c4c9d5648ee27c0c48a56a0dbd17d7ba
+      size: 3775
     - path: src/qwen3vl_demo/rerank.py
       hash: md5
-      md5: ccbc0c9f83d43889a33295caf9e5bd63
-      size: 4070
+      md5: 1443f37304b6946da9c60154d7b2d328
+      size: 11358
     params:
       configs/smoke.yaml:
         data:
@@ -320,6 +328,8 @@ stages:
         reranker:
           model_id:
           top_k: 4
+          model_dir: outputs_smoke/reranker
+          num_negatives: 2
         seed: 0
         train:
           epochs: 1
@@ -336,16 +346,16 @@ stages:
     deps:
     - path: src/qwen3vl_demo/config.py
       hash: md5
-      md5: 168e4ab4b6d455cbdb63066b15105faa
-      size: 4868
+      md5: 16f8543e1687864373aa840b10cccb5c
+      size: 9975
     - path: src/qwen3vl_demo/generate_data.py
       hash: md5
-      md5: 0e8f8ed9f7037f990a15c3a4dac24e54
-      size: 4661
+      md5: d094ac1e88cf85d36bc0d7af515d1d56
+      size: 7283
     - path: src/qwen3vl_demo/prompts.py
       hash: md5
-      md5: 41abe305b1264de6caa6d8dbd2d6a186
-      size: 3258
+      md5: 93e48b48e7497c9ed5163f0f897ce3dc
+      size: 5868
     params:
       configs/default.yaml:
         data:
@@ -361,10 +371,10 @@ stages:
           max_pixels: 200704
           query_prompt_name: query
         image_gen:
-          model_id: stabilityai/sd-turbo
-          num_inference_steps: 1
-          guidance_scale: 0.0
-          batch_size: 8
+          model_id: black-forest-labs/FLUX.2-klein-4B
+          num_inference_steps: 4
+          guidance_scale: 1.0
+          batch_size: 4
         paths:
           data_dir: data
           output_dir: outputs
@@ -373,6 +383,8 @@ stages:
         reranker:
           model_id: Qwen/Qwen3-VL-Reranker-2B
           top_k: 10
+          model_dir: outputs/reranker
+          num_negatives: 3
         seed: 42
         train:
           epochs: 1
@@ -387,34 +399,34 @@ stages:
     outs:
     - path: data/eval
       hash: md5
-      md5: e6c57a4d28811fe48385b5e0ea5465cb.dir
-      size: 22110815
+      md5: 8fede1d7b3b37967fa375a9013dcca3a.dir
+      size: 19166015
       nfiles: 3
     - path: data/train
       hash: md5
-      md5: 435a6cdcfb4ddd28f8b4f58e8fb6a857.dir
-      size: 87712375
+      md5: feb8987565647fbb3b3f8bc5099c4c56.dir
+      size: 74400343
       nfiles: 3
   eval_base@default:
     cmd: uv run python -m qwen3vl_demo.evaluate --profile default --label base
     deps:
     - path: data/eval
       hash: md5
-      md5: e6c57a4d28811fe48385b5e0ea5465cb.dir
-      size: 22110815
+      md5: 8fede1d7b3b37967fa375a9013dcca3a.dir
+      size: 19166015
       nfiles: 3
     - path: src/qwen3vl_demo/config.py
       hash: md5
-      md5: 168e4ab4b6d455cbdb63066b15105faa
-      size: 4868
+      md5: 16f8543e1687864373aa840b10cccb5c
+      size: 9975
     - path: src/qwen3vl_demo/evaluate.py
       hash: md5
-      md5: 36de34659a73c58085b452ed8e5755e9
-      size: 3940
+      md5: 6bdeb86d8b81755aadc3ea584e5302ab
+      size: 6180
     - path: src/qwen3vl_demo/models.py
       hash: md5
-      md5: 5f74f73ec912bee977bd6e8235d605f1
-      size: 2297
+      md5: c4c9d5648ee27c0c48a56a0dbd17d7ba
+      size: 3775
     params:
       configs/default.yaml:
         data:
@@ -430,10 +442,10 @@ stages:
           max_pixels: 200704
           query_prompt_name: query
         image_gen:
-          model_id: stabilityai/sd-turbo
-          num_inference_steps: 1
-          guidance_scale: 0.0
-          batch_size: 8
+          model_id: black-forest-labs/FLUX.2-klein-4B
+          num_inference_steps: 4
+          guidance_scale: 1.0
+          batch_size: 4
         paths:
           data_dir: data
           output_dir: outputs
@@ -442,6 +454,8 @@ stages:
         reranker:
           model_id: Qwen/Qwen3-VL-Reranker-2B
           top_k: 10
+          model_dir: outputs/reranker
+          num_negatives: 3
         seed: 42
         train:
           epochs: 1
@@ -456,37 +470,37 @@ stages:
     outs:
     - path: outputs/metrics_base.json
       hash: md5
-      md5: 026b9a50fc6017200c1e8ee9f8b2643e
+      md5: 05043aea55eb789ca78b00ea4f605cc2
       size: 897
   train@default:
     cmd: uv run python -m qwen3vl_demo.train --profile default
     deps:
     - path: data/eval
       hash: md5
-      md5: e6c57a4d28811fe48385b5e0ea5465cb.dir
-      size: 22110815
+      md5: 8fede1d7b3b37967fa375a9013dcca3a.dir
+      size: 19166015
       nfiles: 3
     - path: data/train
       hash: md5
-      md5: 435a6cdcfb4ddd28f8b4f58e8fb6a857.dir
-      size: 87712375
+      md5: feb8987565647fbb3b3f8bc5099c4c56.dir
+      size: 74400343
       nfiles: 3
     - path: src/qwen3vl_demo/config.py
       hash: md5
-      md5: 168e4ab4b6d455cbdb63066b15105faa
-      size: 4868
+      md5: 16f8543e1687864373aa840b10cccb5c
+      size: 9975
     - path: src/qwen3vl_demo/evaluate.py
       hash: md5
-      md5: 36de34659a73c58085b452ed8e5755e9
-      size: 3940
+      md5: 6bdeb86d8b81755aadc3ea584e5302ab
+      size: 6180
     - path: src/qwen3vl_demo/models.py
       hash: md5
-      md5: 5f74f73ec912bee977bd6e8235d605f1
-      size: 2297
+      md5: c4c9d5648ee27c0c48a56a0dbd17d7ba
+      size: 3775
     - path: src/qwen3vl_demo/train.py
       hash: md5
-      md5: 5a81a026662dd1d1a2682d446de900d5
-      size: 3210
+      md5: 6361b2025bb7f5fa22901e5c226631ba
+      size: 4820
     params:
       configs/default.yaml:
         data:
@@ -502,10 +516,10 @@ stages:
           max_pixels: 200704
           query_prompt_name: query
         image_gen:
-          model_id: stabilityai/sd-turbo
-          num_inference_steps: 1
-          guidance_scale: 0.0
-          batch_size: 8
+          model_id: black-forest-labs/FLUX.2-klein-4B
+          num_inference_steps: 4
+          guidance_scale: 1.0
+          batch_size: 4
         paths:
           data_dir: data
           output_dir: outputs
@@ -514,6 +528,8 @@ stages:
         reranker:
           model_id: Qwen/Qwen3-VL-Reranker-2B
           top_k: 10
+          model_dir: outputs/reranker
+          num_negatives: 3
         seed: 42
         train:
           epochs: 1
@@ -528,34 +544,34 @@ stages:
     outs:
     - path: outputs/model
       hash: md5
-      md5: d26fa1d8c68a256897a178ca9a3ec520.dir
-      size: 4266768090
+      md5: 4d3fe7597ebf788c885c814b6bf14393.dir
+      size: 4266733334
       nfiles: 14
   eval@default:
     cmd: uv run python -m qwen3vl_demo.evaluate --profile default --finetuned
     deps:
     - path: data/eval
       hash: md5
-      md5: e6c57a4d28811fe48385b5e0ea5465cb.dir
-      size: 22110815
+      md5: 8fede1d7b3b37967fa375a9013dcca3a.dir
+      size: 19166015
       nfiles: 3
     - path: outputs/model
       hash: md5
-      md5: d26fa1d8c68a256897a178ca9a3ec520.dir
-      size: 4266768090
+      md5: 4d3fe7597ebf788c885c814b6bf14393.dir
+      size: 4266733334
       nfiles: 14
     - path: src/qwen3vl_demo/config.py
       hash: md5
-      md5: 168e4ab4b6d455cbdb63066b15105faa
-      size: 4868
+      md5: 16f8543e1687864373aa840b10cccb5c
+      size: 9975
     - path: src/qwen3vl_demo/evaluate.py
       hash: md5
-      md5: 36de34659a73c58085b452ed8e5755e9
-      size: 3940
+      md5: 6bdeb86d8b81755aadc3ea584e5302ab
+      size: 6180
     - path: src/qwen3vl_demo/models.py
       hash: md5
-      md5: 5f74f73ec912bee977bd6e8235d605f1
-      size: 2297
+      md5: c4c9d5648ee27c0c48a56a0dbd17d7ba
+      size: 3775
     params:
       configs/default.yaml:
         data:
@@ -571,10 +587,10 @@ stages:
           max_pixels: 200704
           query_prompt_name: query
         image_gen:
-          model_id: stabilityai/sd-turbo
-          num_inference_steps: 1
-          guidance_scale: 0.0
-          batch_size: 8
+          model_id: black-forest-labs/FLUX.2-klein-4B
+          num_inference_steps: 4
+          guidance_scale: 1.0
+          batch_size: 4
         paths:
           data_dir: data
           output_dir: outputs
@@ -583,6 +599,8 @@ stages:
         reranker:
           model_id: Qwen/Qwen3-VL-Reranker-2B
           top_k: 10
+          model_dir: outputs/reranker
+          num_negatives: 3
         seed: 42
         train:
           epochs: 1
@@ -597,33 +615,38 @@ stages:
     outs:
     - path: outputs/metrics_finetuned.json
       hash: md5
-      md5: 94da1414578c7fbc9ce4cfea306e570f
-      size: 869
+      md5: 1f248db256b0800e35ff188af0a793f4
+      size: 897
   rerank_default:
     cmd: uv run python -m qwen3vl_demo.rerank --profile default
     deps:
     - path: data/eval
       hash: md5
-      md5: e6c57a4d28811fe48385b5e0ea5465cb.dir
-      size: 22110815
+      md5: 8fede1d7b3b37967fa375a9013dcca3a.dir
+      size: 19166015
       nfiles: 3
     - path: outputs/model
       hash: md5
-      md5: d26fa1d8c68a256897a178ca9a3ec520.dir
-      size: 4266768090
+      md5: 4d3fe7597ebf788c885c814b6bf14393.dir
+      size: 4266733334
       nfiles: 14
+    - path: outputs/reranker
+      hash: md5
+      md5: 43ab22d2a4204fa4f0fca886fde70cfe.dir
+      size: 4266848946
+      nfiles: 18
     - path: src/qwen3vl_demo/config.py
       hash: md5
-      md5: 168e4ab4b6d455cbdb63066b15105faa
-      size: 4868
+      md5: 16f8543e1687864373aa840b10cccb5c
+      size: 9975
     - path: src/qwen3vl_demo/models.py
       hash: md5
-      md5: 5f74f73ec912bee977bd6e8235d605f1
-      size: 2297
+      md5: c4c9d5648ee27c0c48a56a0dbd17d7ba
+      size: 3775
     - path: src/qwen3vl_demo/rerank.py
       hash: md5
-      md5: ccbc0c9f83d43889a33295caf9e5bd63
-      size: 4070
+      md5: 1443f37304b6946da9c60154d7b2d328
+      size: 11358
     params:
       configs/default.yaml:
         data:
@@ -639,10 +662,10 @@ stages:
           max_pixels: 200704
           query_prompt_name: query
         image_gen:
-          model_id: stabilityai/sd-turbo
-          num_inference_steps: 1
-          guidance_scale: 0.0
-          batch_size: 8
+          model_id: black-forest-labs/FLUX.2-klein-4B
+          num_inference_steps: 4
+          guidance_scale: 1.0
+          batch_size: 4
         paths:
           data_dir: data
           output_dir: outputs
@@ -651,6 +674,8 @@ stages:
         reranker:
           model_id: Qwen/Qwen3-VL-Reranker-2B
           top_k: 10
+          model_dir: outputs/reranker
+          num_negatives: 3
         seed: 42
         train:
           epochs: 1
@@ -665,5 +690,71 @@ stages:
     outs:
     - path: outputs/rerank_examples.json
       hash: md5
-      md5: cc0100b8e8b6411d69b4803bbefc0262
-      size: 815
+      md5: e55b9d9ccf261fe91b2be3f467f56d27
+      size: 1025
+    - path: outputs/rerank_metrics.json
+      hash: md5
+      md5: d79db1479300a1d4a7b48995185804c6
+      size: 1248
+  train_reranker:
+    cmd: uv run python -m qwen3vl_demo.train_reranker --profile default
+    deps:
+    - path: data/train
+      hash: md5
+      md5: feb8987565647fbb3b3f8bc5099c4c56.dir
+      size: 74400343
+      nfiles: 3
+    - path: src/qwen3vl_demo/config.py
+      hash: md5
+      md5: 16f8543e1687864373aa840b10cccb5c
+      size: 9975
+    - path: src/qwen3vl_demo/train_reranker.py
+      hash: md5
+      md5: ba46c79b471e6e19cd5a929eb951dd09
+      size: 6756
+    params:
+      configs/default.yaml:
+        data:
+          num_train: 200
+          num_eval: 50
+          image_size: 512
+          relevant_same_category: false
+        device: cuda
+        dtype: bfloat16
+        embedding:
+          model_id: Qwen/Qwen3-VL-Embedding-2B
+          attn_implementation: flash_attention_2
+          max_pixels: 200704
+          query_prompt_name: query
+        image_gen:
+          model_id: black-forest-labs/FLUX.2-klein-4B
+          num_inference_steps: 4
+          guidance_scale: 1.0
+          batch_size: 4
+        paths:
+          data_dir: data
+          output_dir: outputs
+          model_dir: outputs/model
+        profile: default
+        reranker:
+          model_id: Qwen/Qwen3-VL-Reranker-2B
+          top_k: 10
+          model_dir: outputs/reranker
+          num_negatives: 3
+        seed: 42
+        train:
+          epochs: 1
+          per_device_batch_size: 4
+          gradient_accumulation_steps: 1
+          learning_rate: 2e-05
+          warmup_ratio: 0.1
+          gradient_checkpointing: true
+          eval_steps: 50
+          save_steps: 50
+          logging_steps: 10
+    outs:
+    - path: outputs/reranker
+      hash: md5
+      md5: 43ab22d2a4204fa4f0fca886fde70cfe.dir
+      size: 4266848946
+      nfiles: 18
