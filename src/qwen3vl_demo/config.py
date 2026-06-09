@@ -37,8 +37,8 @@ CONFIG_DIR = REPO_ROOT / "configs"
 class Paths:
     """成果物の出力先ディレクトリ群（YAML の ``paths`` セクションに対応）。"""
 
-    data_dir: str = "data"          # 生成したデータセット（train/eval）の保存先
-    output_dir: str = "outputs"     # メトリクス JSON・リランク結果などの出力先
+    data_dir: str = "data"  # 生成したデータセット（train/eval）の保存先
+    output_dir: str = "outputs"  # メトリクス JSON・リランク結果などの出力先
     model_dir: str = "outputs/model"  # ファインチューニング済みモデルの保存先
 
 
@@ -46,9 +46,9 @@ class Paths:
 class DataCfg:
     """データ生成・評価まわりの設定（YAML の ``data`` セクション）。"""
 
-    num_train: int = 200            # 学習用に生成する (caption, image) ペア数
-    num_eval: int = 50              # 評価用に生成するペア数
-    image_size: int = 512           # 生成画像の一辺ピクセル数（正方形）
+    num_train: int = 200  # 学習用に生成する (caption, image) ペア数
+    num_eval: int = 50  # 評価用に生成するペア数
+    image_size: int = 512  # 生成画像の一辺ピクセル数（正方形）
     # True にすると、評価時に「同じカテゴリの画像」も正解とみなす（緩い評価）。
     # 既定の False はキャプションと画像の厳密な 1 対 1 対応のみを正解とする。
     relevant_same_category: bool = False
@@ -59,9 +59,9 @@ class ImageGenCfg:
     """画像生成モデル（SD-Turbo）の設定（YAML の ``image_gen`` セクション）。"""
 
     model_id: str = "stabilityai/sd-turbo"  # "stub" にすると合成スタブ画像に切替
-    num_inference_steps: int = 1    # SD-Turbo は 1〜4 ステップ向けに蒸留されている
-    guidance_scale: float = 0.0     # Turbo 系は classifier-free guidance を使わない
-    batch_size: int = 8             # パイプライン 1 回あたりに生成する画像枚数
+    num_inference_steps: int = 1  # SD-Turbo は 1〜4 ステップ向けに蒸留されている
+    guidance_scale: float = 0.0  # Turbo 系は classifier-free guidance を使わない
+    batch_size: int = 8  # パイプライン 1 回あたりに生成する画像枚数
 
 
 @dataclass
@@ -84,7 +84,7 @@ class RerankerCfg:
     """リランカー（Qwen3-VL-Reranker）の設定（YAML の ``reranker`` セクション）。"""
 
     model_id: str | None = "Qwen/Qwen3-VL-Reranker-2B"  # None ならリランク工程をスキップ
-    top_k: int = 10                 # リランク対象とする検索上位件数
+    top_k: int = 10  # リランク対象とする検索上位件数
     # ファインチューニング済みリランカーの保存先。学習後ここに保存し、rerank 時に
     # 存在すれば優先して使う。
     model_dir: str = "outputs/reranker"
@@ -97,12 +97,12 @@ class TrainCfg:
     """学習ハイパーパラメータ（YAML の ``train`` セクション）。"""
 
     epochs: int = 1
-    per_device_batch_size: int = 4      # MNRL ではバッチが大きいほど負例が増えて有利
+    per_device_batch_size: int = 4  # MNRL ではバッチが大きいほど負例が増えて有利
     gradient_accumulation_steps: int = 1
     learning_rate: float = 2.0e-5
     warmup_ratio: float = 0.1
     gradient_checkpointing: bool = True  # VRAM 節約（速度と引き換え）
-    eval_steps: int = 50                # 何ステップごとに評価器を回すか
+    eval_steps: int = 50  # 何ステップごとに評価器を回すか
     save_steps: int = 50
     logging_steps: int = 10
 
@@ -113,8 +113,8 @@ class Config:
 
     profile: str = "default"
     seed: int = 42
-    device: str = "cuda"            # "cuda" or "cpu"
-    dtype: str = "bfloat16"         # "float32" / "float16" / "bfloat16"
+    device: str = "cuda"  # "cuda" or "cpu"
+    dtype: str = "bfloat16"  # "float32" / "float16" / "bfloat16"
     paths: Paths = field(default_factory=Paths)
     data: DataCfg = field(default_factory=DataCfg)
     image_gen: ImageGenCfg = field(default_factory=ImageGenCfg)

@@ -7,7 +7,11 @@
 
 from __future__ import annotations
 
+import logging
+
 from .config import Config, resolve_dtype
+
+logger = logging.getLogger(__name__)
 
 
 def load_embedding_model(cfg: Config, model_id: str | None = None):
@@ -30,7 +34,7 @@ def load_embedding_model(cfg: Config, model_id: str | None = None):
 
     model_id = model_id or cfg.embedding.model_id
 
-    model_kwargs: dict = {}      # transformers のモデル本体へ渡す引数
+    model_kwargs: dict = {}  # transformers のモデル本体へ渡す引数
     processor_kwargs: dict = {}  # 画像プロセッサ（前処理）へ渡す引数
 
     # dtype は GPU でのみ意味を持つ。CPU / スモークでは float32 のままにして移植性を保つ。
@@ -57,13 +61,13 @@ def load_embedding_model(cfg: Config, model_id: str | None = None):
     except (ImportError, ValueError, RuntimeError) as exc:
         # flash-attn 未導入、またはプロセッサ引数が非対応 → sdpa で再試行する。
         if model_kwargs.get("attn_implementation") == "flash_attention_2":
-            print(f"  flash_attention_2 が使えません（{exc}）。sdpa で再試行します")
+            logger.warning("  flash_attention_2 が使えません（%s）。sdpa で再試行します", exc)
             model_kwargs["attn_implementation"] = "sdpa"
             try:
                 model = _build(model_kwargs, processor_kwargs)
             except (ImportError, ValueError, RuntimeError) as exc2:
                 # sdpa も失敗したら attention 指定を外し、モデル既定の実装に任せる。
-                print(f"  sdpa も失敗しました（{exc2}）。モデル既定の実装を使います")
+                logger.warning("  sdpa も失敗しました（%s）。モデル既定の実装を使います", exc2)
                 model_kwargs.pop("attn_implementation", None)
                 model = _build(model_kwargs, processor_kwargs)
         else:

@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import logging
 
 from datasets import Dataset, Features, Value
 from datasets import Image as HFImage
@@ -29,6 +30,8 @@ from PIL import Image
 
 from .config import Config, add_config_args, config_from_args, resolve_dtype
 from .prompts import Sample, build_captions
+
+logger = logging.getLogger(__name__)
 
 
 def _stub_image(text: str, size: int) -> Image.Image:
@@ -62,34 +65,43 @@ def _generate_with_diffusers(samples: list[Sample], cfg: Config) -> list[Image.I
     diffusers / torch はここで遅延 import する。これによりスモークモード
     （スタブ画像）では GPU 系の重い依存を一切ロードしない。
     """
+    import time
+
     import torch
     from diffusers import AutoPipelineForText2Image
 
     dtype = resolve_dtype(cfg.dtype)
+    logger.info("モデルロード開始: %s (dtype=%s)", cfg.image_gen.model_id, cfg.dtype)
+    t0 = time.monotonic()
     pipe = AutoPipelineForText2Image.from_pretrained(
         cfg.image_gen.model_id,
         torch_dtype=dtype,
     )
     pipe = pipe.to(cfg.device)
-    pipe.set_progress_bar_config(disable=True)  # tqdm の進捗バーは抑制（自前で print する）
+    pipe.set_progress_bar_config(disable=True)
+    logger.info("モデルロード完了: %.1f 秒", time.monotonic() - t0)
 
     images: list[Image.Image] = []
     bs = max(1, cfg.image_gen.batch_size)
+    total = len(samples)
     # seed 固定の Generator で再現性を確保（同じ設定なら同じ画像が出る）。
     generator = torch.Generator(device=cfg.device).manual_seed(cfg.seed)
-    for start in range(0, len(samples), bs):
+    t_batch_start = time.monotonic()
+    for start in range(0, total, bs):
         batch = samples[start : start + bs]
         prompts = [s.text for s in batch]
         out = pipe(
             prompt=prompts,
-            num_inference_steps=cfg.image_gen.num_inference_steps,  # モデルに応じて設定
-            guidance_scale=cfg.image_gen.guidance_scale,            # 同上
+            num_inference_steps=cfg.image_gen.num_inference_steps,
+            guidance_scale=cfg.image_gen.guidance_scale,
             height=cfg.data.image_size,
             width=cfg.data.image_size,
             generator=generator,
         )
         images.extend(out.images)
-        print(f"  生成 {min(start + bs, len(samples))}/{len(samples)} 枚")
+        done = min(start + bs, total)
+        elapsed = time.monotonic() - t_batch_start
+        logger.info("  生成 %d/%d 枚 (%.1f 秒, %.2f 枚/秒)", done, total, elapsed, done / elapsed)
     return images
 
 
@@ -125,16 +137,16 @@ def generate_dataset(cfg: Config) -> None:
     # スモークプロファイル、または明示的に model_id="stub" の場合はスタブ画像を使う。
     use_stub = cfg.is_smoke or cfg.image_gen.model_id == "stub"
 
-    print(f"train {cfg.data.num_train} 件 + eval {cfg.data.num_eval} 件の画像を生成します")
-    print(f"  画像ソース: {'スタブ（合成画像）' if use_stub else cfg.image_gen.model_id}")
+    logger.info("train %d 件 + eval %d 件の画像を生成します", cfg.data.num_train, cfg.data.num_eval)
+    logger.info("  画像ソース: %s", "スタブ（合成画像）" if use_stub else cfg.image_gen.model_id)
 
     if use_stub:
         train_images = _generate_stub(train_samples, cfg.data.image_size)
         eval_images = _generate_stub(eval_samples, cfg.data.image_size)
     else:
-        print("train スプリット:")
+        logger.info("train スプリット:")
         train_images = _generate_with_diffusers(train_samples, cfg)
-        print("eval スプリット:")
+        logger.info("eval スプリット:")
         eval_images = _generate_with_diffusers(eval_samples, cfg)
 
     train_ds = _build_split(train_samples, train_images)
@@ -143,11 +155,21 @@ def generate_dataset(cfg: Config) -> None:
     cfg.data_path.mkdir(parents=True, exist_ok=True)
     train_ds.save_to_disk(str(cfg.data_path / "train"))
     eval_ds.save_to_disk(str(cfg.data_path / "eval"))
-    print(f"データセットを {cfg.data_path} に保存しました（train={len(train_ds)}, eval={len(eval_ds)}）")
+    logger.info(
+        "データセットを %s に保存しました（train=%d, eval=%d）",
+        cfg.data_path,
+        len(train_ds),
+        len(eval_ds),
+    )
 
 
 def main() -> None:
     """CLI エントリポイント: ``python -m qwen3vl_demo.generate_data``。"""
+    logging.basicConfig(
+        format="%(asctime)s %(name)s %(levelname)s %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S",
+        level=logging.INFO,
+    )
     parser = argparse.ArgumentParser(description="合成キャプション付き画像データセットを生成する。")
     add_config_args(parser)
     args = parser.parse_args()

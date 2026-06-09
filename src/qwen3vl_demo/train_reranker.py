@@ -25,12 +25,15 @@ from __future__ import annotations
 
 import argparse
 import gc
+import logging
 import random
 
 from datasets import Dataset, Features, Value, load_from_disk
 from datasets import Image as HFImage
 
 from .config import Config, add_config_args, config_from_args
+
+logger = logging.getLogger(__name__)
 
 
 def build_pair_indices(
@@ -89,6 +92,7 @@ def _free_model(model) -> None:
     gc.collect()
     try:
         import torch
+
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
     except Exception:  # noqa: BLE001
@@ -129,7 +133,7 @@ def mine_hard_negatives(
 
     # FT 済み埋め込みモデルがあればそれを使う（再現性のため、学習後の分布に合わせる）。
     model_id = str(cfg.model_path) if cfg.model_path.exists() else cfg.embedding.model_id
-    print(f"  ハード負例採掘: 埋め込みモデル = {model_id}")
+    logger.info("  ハード負例採掘: 埋め込みモデル = %s", model_id)
 
     model = load_embedding_model(cfg, model_id=model_id)
     corpus_emb = model.encode(images, convert_to_tensor=True, show_progress_bar=False)
@@ -194,7 +198,7 @@ def train_reranker(cfg: Config) -> None:
     """設定に従ってリランカーをファインチューニングし、保存する。"""
     if not cfg.reranker.model_id:
         # スモーク等、リランカー未設定の場合は何もしない（CI でも安全にスキップ）。
-        print("リランカーが無効（reranker.model_id が null）のため、学習をスキップします。")
+        logger.info("リランカーが無効（reranker.model_id が null）のため、学習をスキップします。")
         return
 
     from sentence_transformers.cross_encoder import (
@@ -237,16 +241,25 @@ def train_reranker(cfg: Config) -> None:
         loss=loss,
     )
 
-    print(f"{cfg.reranker.model_id} を {len(train_ds)} ペア（正例＋負例）でファインチューニングします")
+    logger.info(
+        "%s を %d ペア（正例＋負例）でファインチューニングします",
+        cfg.reranker.model_id,
+        len(train_ds),
+    )
     trainer.train()
 
     cfg.reranker_model_path.mkdir(parents=True, exist_ok=True)
     model.save_pretrained(str(cfg.reranker_model_path))
-    print(f"ファインチューニング済みリランカーを {cfg.reranker_model_path} に保存しました")
+    logger.info("ファインチューニング済みリランカーを %s に保存しました", cfg.reranker_model_path)
 
 
 def main() -> None:
     """CLI エントリポイント: ``python -m qwen3vl_demo.train_reranker``。"""
+    logging.basicConfig(
+        format="%(asctime)s %(name)s %(levelname)s %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S",
+        level=logging.INFO,
+    )
     parser = argparse.ArgumentParser(description="Qwen3-VL リランカーをファインチューニングする。")
     add_config_args(parser)
     args = parser.parse_args()

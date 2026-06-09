@@ -30,14 +30,39 @@ SUBJECTS: dict[str, list[str]] = {
     "animal": ["cat", "dog", "rabbit", "horse", "owl", "fox", "panda", "parrot"],
     "vehicle": ["car", "bicycle", "motorcycle", "sailboat", "train", "airplane", "scooter"],
     "food": ["coffee cup", "pizza", "burger", "bowl of ramen", "cupcake", "sushi roll", "salad"],
-    "scene": ["mountain", "beach", "forest path", "city street", "desert dune", "waterfall", "lighthouse"],
-    "object": ["wooden chair", "leather backpack", "ceramic teapot", "old typewriter", "guitar", "lantern"],
+    "scene": [
+        "mountain",
+        "beach",
+        "forest path",
+        "city street",
+        "desert dune",
+        "waterfall",
+        "lighthouse",
+    ],
+    "object": [
+        "wooden chair",
+        "leather backpack",
+        "ceramic teapot",
+        "old typewriter",
+        "guitar",
+        "lantern",
+    ],
 }
 
 # 形容詞（見た目の修飾）。多様性を稼ぐための語彙。
 ADJECTIVES: list[str] = [
-    "fluffy", "tiny", "vintage", "glowing", "rustic", "colorful",
-    "sleek", "weathered", "majestic", "cozy", "shiny", "wild",
+    "fluffy",
+    "tiny",
+    "vintage",
+    "glowing",
+    "rustic",
+    "colorful",
+    "sleek",
+    "weathered",
+    "majestic",
+    "cozy",
+    "shiny",
+    "wild",
 ]
 
 # 情景・状況（背景や状況の修飾）。

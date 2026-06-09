@@ -18,11 +18,14 @@ from __future__ import annotations
 
 import argparse
 import json
+import logging
 
 from datasets import load_from_disk
 
 from .config import Config, add_config_args, config_from_args
 from .models import load_embedding_model
+
+logger = logging.getLogger(__name__)
 
 # 評価器の名前。出力されるメトリクスのキーにこの名前が前置される
 # （例: "synthetic-image-retrieval_cosine_ndcg@10"）。app.py 側の表示と揃えてある。
@@ -40,11 +43,11 @@ def build_ir_evaluator(cfg: Config, name: str = EVALUATOR_NAME):
 
     eval_ds = load_from_disk(str(cfg.data_path / "eval"))
 
-    queries: dict[str, str] = {}            # qid -> クエリ文
-    corpus: dict = {}                       # cid -> 画像（PIL）
+    queries: dict[str, str] = {}  # qid -> クエリ文
+    corpus: dict = {}  # cid -> 画像（PIL）
     relevant_docs: dict[str, set[str]] = {}  # qid -> 正解 cid の集合
     category_to_cids: dict[str, set[str]] = {}  # カテゴリ -> その cid 集合（緩い評価用）
-    subject_to_cids: dict[str, set[str]] = {}   # 主語 -> その cid 集合（subject ベース評価用）
+    subject_to_cids: dict[str, set[str]] = {}  # 主語 -> その cid 集合（subject ベース評価用）
 
     # 1 周目: corpus / queries / subject_to_cids / category_to_cids を構築する。
     # relevant_docs は subject_to_cids が確定してから 2 周目で埋める。
@@ -53,7 +56,7 @@ def build_ir_evaluator(cfg: Config, name: str = EVALUATOR_NAME):
         cid = f"d{i}"
         # クエリは主語単語のみ（"cat" など）: 視覚分類タスクとして評価するため。
         queries[qid] = row["subject"]
-        corpus[cid] = row["positive"]   # Image 型カラムなので PIL 画像としてデコードされる
+        corpus[cid] = row["positive"]  # Image 型カラムなので PIL 画像としてデコードされる
         category_to_cids.setdefault(row["category"], set()).add(cid)
         subject_to_cids.setdefault(row["subject"], set()).add(cid)
 
@@ -84,7 +87,7 @@ def evaluate_model(cfg: Config, model_id: str, label: str) -> dict:
     メトリクスは ``<output_dir>/metrics_<label>.json`` にも書き出す。
     ``label`` は通常 "base"（ベース）/ "finetuned"（FT 後）を使う。
     """
-    print(f"評価 [{label}]: {model_id}")
+    logger.info("評価 [%s]: %s", label, model_id)
     model = load_embedding_model(cfg, model_id=model_id)
     evaluator = build_ir_evaluator(cfg)
     metrics = evaluator(model)  # 評価器を呼ぶとメトリクス dict が返る
@@ -95,28 +98,28 @@ def evaluate_model(cfg: Config, model_id: str, label: str) -> dict:
         json.dump(metrics, fh, indent=2, sort_keys=True)
 
     _print_headline(metrics, label)
-    print(f"  全メトリクス -> {out_file}")
+    logger.info("  全メトリクス -> %s", out_file)
     return metrics
 
 
 def _print_headline(metrics: dict, label: str) -> None:
     """主要メトリクスだけを抜き出して表示する（キー名は ST のバージョンで変わりうる）。"""
     interesting = ("ndcg@10", "recall@1", "recall@5", "recall@10", "mrr@10")
-    found = {
-        k: v
-        for k, v in metrics.items()
-        if any(k.lower().endswith(s) for s in interesting)
-    }
+    found = {k: v for k, v in metrics.items() if any(k.lower().endswith(s) for s in interesting)}
     if not found:
-        # 想定キーが見つからない場合は全部そのまま出す（バージョン差異の保険）。
-        print(f"  [{label}] metrics: {metrics}")
+        logger.info("  [%s] metrics: %s", label, metrics)
         return
     for k in sorted(found):
-        print(f"  [{label}] {k}: {found[k]:.4f}")
+        logger.info("  [%s] %s: %.4f", label, k, found[k])
 
 
 def main() -> None:
     """CLI エントリポイント: ``python -m qwen3vl_demo.evaluate``。"""
+    logging.basicConfig(
+        format="%(asctime)s %(name)s %(levelname)s %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S",
+        level=logging.INFO,
+    )
     parser = argparse.ArgumentParser(description="テキスト→画像検索の精度を評価する。")
     add_config_args(parser)
     parser.add_argument(

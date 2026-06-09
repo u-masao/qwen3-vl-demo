@@ -26,12 +26,15 @@ from __future__ import annotations
 
 import argparse
 import json
+import logging
 import math
 
 from datasets import load_from_disk
 
 from .config import Config, add_config_args, config_from_args
 from .models import load_embedding_model
+
+logger = logging.getLogger(__name__)
 
 
 def _free(model) -> None:
@@ -177,7 +180,7 @@ def run_rerank(cfg: Config, num_queries: int = 5) -> None:
     """4 パターンの 2 段階検索を評価し、メトリクスと事例を保存する。"""
     if not cfg.reranker.model_id:
         # スモーク等、リランカー未設定の場合は何もしない。
-        print("リランカーが無効（reranker.model_id が null）のためスキップします。")
+        logger.info("リランカーが無効（reranker.model_id が null）のためスキップします。")
         return
 
     eval_ds = load_from_disk(str(cfg.data_path / "eval"))
@@ -198,12 +201,14 @@ def run_rerank(cfg: Config, num_queries: int = 5) -> None:
     if cfg.reranker_model_path.exists():
         rr_variants["ft"] = str(cfg.reranker_model_path)
 
-    print(f"埋め込み: {list(emb_variants)} / リランカー: {list(rr_variants)} / top_k={top_k}")
+    logger.info(
+        "埋め込み: %s / リランカー: %s / top_k=%d", list(emb_variants), list(rr_variants), top_k
+    )
 
     # --- 第 1 段: 各埋め込みで候補（top_k）を取得（モデルは 1 つずつロード/解放） ---
     candidates: dict[str, list[list[int]]] = {}
     for emb_name, emb_id in emb_variants.items():
-        print(f"  retrieve: 埋め込み={emb_name} ({emb_id})")
+        logger.info("  retrieve: 埋め込み=%s (%s)", emb_name, emb_id)
         candidates[emb_name] = _retrieve_topk(cfg, emb_id, queries, corpus_images, top_k)
 
     metrics: dict[str, dict[str, float]] = {}
@@ -215,7 +220,7 @@ def run_rerank(cfg: Config, num_queries: int = 5) -> None:
     # --- 第 2 段: 各リランカーで全埋め込みの候補を並べ替えて評価 ---
     reranked_by_rr: dict[str, dict[str, list[list[int]]]] = {}
     for rr_name, rr_id in rr_variants.items():
-        print(f"  rerank: リランカー={rr_name} ({rr_id})")
+        logger.info("  rerank: リランカー=%s (%s)", rr_name, rr_id)
         reranked = _rerank_candidates(cfg, rr_id, queries, corpus_images, candidates)
         reranked_by_rr[rr_name] = reranked
         for emb_name, ranked in reranked.items():
@@ -228,11 +233,13 @@ def run_rerank(cfg: Config, num_queries: int = 5) -> None:
         json.dump(metrics, fh, indent=2, sort_keys=True)
 
     # サマリを表示（主要指標 NDCG@top_k）。
-    print("=== 4 パターン評価（NDCG@%d / MRR）===" % top_k)
+    logger.info("=== 4 パターン評価（NDCG@%d / MRR）===", top_k)
     for key in sorted(metrics):
         m = metrics[key]
-        print(f"  {key:28s} NDCG@{top_k}={m.get(f'ndcg@{top_k}', 0):.4f}  MRR={m['mrr']:.4f}")
-    print(f"  メトリクス -> {metrics_file}")
+        logger.info(
+            "  %-28s NDCG@%d=%.4f  MRR=%.4f", key, top_k, m.get(f"ndcg@{top_k}", 0), m["mrr"]
+        )
+    logger.info("  メトリクス -> %s", metrics_file)
 
     # --- 事例: 最良の組（ft があれば ft）でリランク前後の順位を数件保存 ---
     best_emb = "ft" if "ft" in emb_variants else "base"
@@ -256,12 +263,19 @@ def run_rerank(cfg: Config, num_queries: int = 5) -> None:
     examples_file = cfg.output_path / "rerank_examples.json"
     with open(examples_file, "w", encoding="utf-8") as fh:
         json.dump(examples, fh, indent=2)
-    print(f"  リランク事例（{best_emb}+{best_rr}）-> {examples_file}")
+    logger.info("  リランク事例（%s+%s）-> %s", best_emb, best_rr, examples_file)
 
 
 def main() -> None:
     """CLI エントリポイント: ``python -m qwen3vl_demo.rerank``。"""
-    parser = argparse.ArgumentParser(description="埋め込み×リランカーの 4 パターン 2 段階検索評価。")
+    logging.basicConfig(
+        format="%(asctime)s %(name)s %(levelname)s %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S",
+        level=logging.INFO,
+    )
+    parser = argparse.ArgumentParser(
+        description="埋め込み×リランカーの 4 パターン 2 段階検索評価。"
+    )
     add_config_args(parser)
     parser.add_argument(
         "--num-queries",

@@ -17,12 +17,15 @@
 from __future__ import annotations
 
 import argparse
+import logging
 
 from datasets import load_from_disk
 
 from .config import Config, add_config_args, config_from_args
 from .evaluate import build_ir_evaluator
 from .models import load_embedding_model
+
+logger = logging.getLogger(__name__)
 
 
 def train(cfg: Config) -> None:
@@ -41,7 +44,7 @@ def train(cfg: Config) -> None:
         try:
             model.gradient_checkpointing_enable()
         except Exception as exc:  # noqa: BLE001 - ベストエフォート（全バックボーンが対応とは限らない）
-            print(f"  勾配チェックポイントを有効化できませんでした: {exc}")
+            logger.warning("  勾配チェックポイントを有効化できませんでした: %s", exc)
 
     train_ds = load_from_disk(str(cfg.data_path / "train"))
     # subject 単語（"cat" など）をアンカーとして使う（visual classification タスク）。
@@ -73,9 +76,9 @@ def train(cfg: Config) -> None:
         eval_steps=cfg.train.eval_steps,
         save_strategy="steps",
         save_steps=cfg.train.save_steps,
-        save_total_limit=1,        # チェックポイントは最新 1 個だけ残す（ディスク節約）
+        save_total_limit=1,  # チェックポイントは最新 1 個だけ残す（ディスク節約）
         logging_steps=cfg.train.logging_steps,
-        report_to=[],              # W&B 等の外部ロガーへは送らない
+        report_to=[],  # W&B 等の外部ロガーへは送らない
         seed=cfg.seed,
     )
 
@@ -87,17 +90,24 @@ def train(cfg: Config) -> None:
         evaluator=evaluator,
     )
 
-    print(f"{cfg.embedding.model_id} を {len(train_ds)} ペアでファインチューニングします")
+    logger.info("%s を %d ペアでファインチューニングします", cfg.embedding.model_id, len(train_ds))
     trainer.train()
 
     cfg.model_path.mkdir(parents=True, exist_ok=True)
     model.save_pretrained(str(cfg.model_path))
-    print(f"ファインチューニング済みモデルを {cfg.model_path} に保存しました")
+    logger.info("ファインチューニング済みモデルを %s に保存しました", cfg.model_path)
 
 
 def main() -> None:
     """CLI エントリポイント: ``python -m qwen3vl_demo.train``。"""
-    parser = argparse.ArgumentParser(description="Qwen3-VL 埋め込みモデルをファインチューニングする。")
+    logging.basicConfig(
+        format="%(asctime)s %(name)s %(levelname)s %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S",
+        level=logging.INFO,
+    )
+    parser = argparse.ArgumentParser(
+        description="Qwen3-VL 埋め込みモデルをファインチューニングする。"
+    )
     add_config_args(parser)
     args = parser.parse_args()
     cfg = config_from_args(args)
