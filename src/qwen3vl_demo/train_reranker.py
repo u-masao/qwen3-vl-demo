@@ -5,10 +5,12 @@
 cross-encoder は「クエリと文書をペアで入力して 1 つの関連度スコアを出す」ため、
 学習には **正例（一致ペア）と負例（不一致ペア）の両方** が必要になる。
 
-このモジュールは合成データから負例を自動生成（ネガティブマイニング）して学習する:
+負例生成には **ハードネガティブマイニング** を用いる:
 
-  * 各キャプション i について、対応する画像 i を **正例（label=1）**
-  * 同じキャプション i に対し、別の画像 j（可能なら別カテゴリ）を **負例（label=0）**
+  * FT 済み埋め込みモデル（なければベース）でコーパス全体をエンコードし、
+    各クエリとのコサイン類似度が高い上位候補（正例を除く）を負例に選ぶ。
+  * 実運用の検索パイプラインでリランカーが直面する「埋め込み上位候補」と同じ
+    分布の難しい負例を学習させることで、精度改善を狙う。
 
 損失は ``BinaryCrossEntropyLoss``（各 (query, image) ペアを「関連あり/なし」の
 2 値分類として学習）を用いる。
@@ -22,6 +24,7 @@ cross-encoder は「クエリと文書をペアで入力して 1 つの関連度
 from __future__ import annotations
 
 import argparse
+import gc
 import random
 
 from datasets import Dataset, Features, Value, load_from_disk
@@ -41,9 +44,13 @@ def build_pair_indices(
       * 正例 ``(i, i, 1.0)`` を 1 件
       * 負例 ``(i, j, 0.0)`` を ``num_negatives`` 件（``j != i``）
 
-    負例の ``j`` は、できるだけ ``i`` と **別カテゴリ** から選ぶ（紛らわしすぎない、
-    かつ明確に不一致な負例にするため）。別カテゴリが足りなければ、同カテゴリの
-    別インデックスで補う。画像を一切触らずインデックスだけ扱うので単体テストしやすい。
+    負例の ``j`` は、できるだけ ``i`` と **別カテゴリ** から選ぶ（明確に不一致な
+    負例にするため）。別カテゴリが足りなければ、同カテゴリの別インデックスで補う。
+    画像を一切触らずインデックスだけ扱うので単体テストしやすい。
+
+    .. note::
+        本関数はテスト用・フォールバック用に残している。
+        本番学習では :func:`mine_hard_negatives` を使うこと。
 
     Args:
         categories: 各行の被写体カテゴリ（長さ = データ件数）。
@@ -76,14 +83,97 @@ def build_pair_indices(
     return pairs
 
 
+def _free_model(model) -> None:
+    """モデルを破棄して GPU メモリを解放する。"""
+    del model
+    gc.collect()
+    try:
+        import torch
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+    except Exception:  # noqa: BLE001
+        pass
+
+
+def mine_hard_negatives(
+    cfg: Config,
+    anchors: list[str],
+    images: list,
+    num_negatives: int,
+    seed: int,
+) -> list[tuple[int, int, float]]:
+    """埋め込み類似度上位の候補を負例に使うハードネガティブマイニング（純粋関数）。
+
+    FT 済み埋め込みモデル（``cfg.model_path``）があればそれを、なければベースモデル
+    （``cfg.embedding.model_id``）を使ってコーパスをエンコードし、各クエリと
+    コサイン類似度が高い順に並べた上位候補から正例（自分自身）を除いた
+    ``num_negatives`` 件を負例として選ぶ。
+
+    これにより、実際の検索パイプラインがリランカーに渡す「埋め込み上位候補」と
+    同じ分布の難しい負例を学習させることができる。
+
+    上位 ``num_negatives`` 件に満たない場合（コーパスが小さいとき等）は
+    ランダムサンプリングで補充する。
+
+    Args:
+        cfg: パイプライン設定（device / dtype / 埋め込みモデルパス参照）。
+        anchors: テキストクエリのリスト（長さ = データ件数）。
+        images: 画像コーパス（長さ = データ件数）。
+        num_negatives: 1 正例あたりの負例数。
+        seed: ランダム補充時のシード（再現性）。
+
+    Returns:
+        ``(query_idx, doc_idx, label)`` のリスト。
+    """
+    from .models import load_embedding_model
+
+    # FT 済み埋め込みモデルがあればそれを使う（再現性のため、学習後の分布に合わせる）。
+    model_id = str(cfg.model_path) if cfg.model_path.exists() else cfg.embedding.model_id
+    print(f"  ハード負例採掘: 埋め込みモデル = {model_id}")
+
+    model = load_embedding_model(cfg, model_id=model_id)
+    corpus_emb = model.encode(images, convert_to_tensor=True, show_progress_bar=False)
+    query_emb = model.encode(anchors, convert_to_tensor=True, show_progress_bar=False)
+    # sim[i][j] = クエリ i と画像 j のコサイン類似度。
+    sim = model.similarity(query_emb, corpus_emb)
+    _free_model(model)
+
+    n = len(anchors)
+    rng = random.Random(seed)
+    pairs: list[tuple[int, int, float]] = []
+
+    for i in range(n):
+        pairs.append((i, i, 1.0))  # 正例
+
+        if n <= 1 or num_negatives <= 0:
+            continue
+
+        # 類似度降順で上位候補を取得し、正例（i 自身）を除外する。
+        fetch_k = min(num_negatives + 1, n)
+        top_indices = sim[i].topk(fetch_k).indices.tolist()
+        hard_negs = [j for j in top_indices if j != i][:num_negatives]
+
+        # コーパスが小さくて足りない場合はランダム補充。
+        if len(hard_negs) < num_negatives:
+            already = set(hard_negs) | {i}
+            remaining = [j for j in range(n) if j not in already]
+            rng.shuffle(remaining)
+            hard_negs.extend(remaining[: num_negatives - len(hard_negs)])
+
+        for j in hard_negs:
+            pairs.append((i, j, 0.0))  # ハード負例
+
+    return pairs
+
+
 def _build_reranker_dataset(cfg: Config) -> Dataset:
     """train スプリットからリランカー学習用の (query, answer, label) データセットを作る。"""
     train_ds = load_from_disk(str(cfg.data_path / "train"))
-    anchors = [row["anchor"] for row in train_ds]
+    # subject 単語（"cat" など）をクエリとして使う（visual classification タスク）。
+    anchors = [row["subject"] for row in train_ds]
     images = [row["positive"] for row in train_ds]
-    categories = [row["category"] for row in train_ds]
 
-    pairs = build_pair_indices(categories, cfg.reranker.num_negatives, seed=cfg.seed)
+    pairs = mine_hard_negatives(cfg, anchors, images, cfg.reranker.num_negatives, seed=cfg.seed)
 
     features = Features(
         {

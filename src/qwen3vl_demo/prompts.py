@@ -66,15 +66,17 @@ TEMPLATES: list[str] = [
 
 @dataclass(frozen=True)
 class Sample:
-    """生成された 1 件のキャプションと、その被写体カテゴリ。
+    """生成された 1 件のキャプションと、その被写体カテゴリ・主語。
 
     Attributes:
         text: キャプション本文（画像生成プロンプト兼・検索クエリ）。
         category: 被写体カテゴリ（"animal" など）。緩い評価の正解判定に使う。
+        subject: 被写体単語（"cat" など）。視覚分類タスク用の短縮クエリとして使う。
     """
 
     text: str
     category: str
+    subject: str
 
 
 def build_captions(n: int, seed: int, max_attempts: int | None = None) -> list[Sample]:
@@ -118,7 +120,7 @@ def build_captions(n: int, seed: int, max_attempts: int | None = None) -> list[S
         if text in seen:
             continue  # 既出の文はスキップ（一意性を保つ）
         seen.add(text)
-        samples.append(Sample(text=text, category=category))
+        samples.append(Sample(text=text, category=category, subject=subj))
 
     if len(samples) < n:
         raise ValueError(

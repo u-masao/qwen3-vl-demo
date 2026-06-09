@@ -49,12 +49,21 @@ def _free(model) -> None:
         pass
 
 
-def _build_relevant(eval_ds, relevant_same_category: bool) -> list[set[int]]:
+def _build_relevant(
+    eval_ds, relevant_same_category: bool, use_subject: bool = False
+) -> list[set[int]]:
     """各クエリ i に対する正解文書インデックス集合を作る（純粋関数）。
 
-    基本は厳密 1 対 1（クエリ i の正解は文書 i）。``relevant_same_category`` が真なら
-    同一カテゴリの文書もすべて正解に含める（緩い評価）。
+    ``use_subject=True`` のとき: 同一主語（"cat" など）の全文書を正解とする（visual
+    classification タスク）。``False`` のときは厳密 1 対 1 で、``relevant_same_category``
+    が真なら同一カテゴリも正解に追加する（後方互換モード）。
     """
+    if use_subject:
+        subject_to_idx: dict[str, set[int]] = {}
+        for i, row in enumerate(eval_ds):
+            subject_to_idx.setdefault(row["subject"], set()).add(i)
+        return [set(subject_to_idx[row["subject"]]) for row in eval_ds]
+
     n = len(eval_ds)
     relevant: list[set[int]] = [{i} for i in range(n)]
     if relevant_same_category:
@@ -173,8 +182,9 @@ def run_rerank(cfg: Config, num_queries: int = 5) -> None:
 
     eval_ds = load_from_disk(str(cfg.data_path / "eval"))
     corpus_images = [row["positive"] for row in eval_ds]
-    queries = [row["anchor"] for row in eval_ds]
-    relevant = _build_relevant(eval_ds, cfg.data.relevant_same_category)
+    # subject 単語（"cat" など）をクエリとして使う（visual classification タスク）。
+    queries = [row["subject"] for row in eval_ds]
+    relevant = _build_relevant(eval_ds, cfg.data.relevant_same_category, use_subject=True)
 
     top_k = min(cfg.reranker.top_k, len(corpus_images))
     ks = sorted({1, min(5, top_k), top_k})

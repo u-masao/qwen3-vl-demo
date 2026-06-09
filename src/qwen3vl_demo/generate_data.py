@@ -104,12 +104,14 @@ def _build_split(samples: list[Sample], images: list[Image.Image]) -> Dataset:
             "anchor": Value("string"),
             "positive": HFImage(),
             "category": Value("string"),
+            "subject": Value("string"),
         }
     )
     data = {
         "anchor": [s.text for s in samples],
         "positive": images,
         "category": [s.category for s in samples],
+        "subject": [s.subject for s in samples],
     }
     return Dataset.from_dict(data, features=features)
 

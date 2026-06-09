@@ -44,17 +44,26 @@ def build_ir_evaluator(cfg: Config, name: str = EVALUATOR_NAME):
     corpus: dict = {}                       # cid -> 画像（PIL）
     relevant_docs: dict[str, set[str]] = {}  # qid -> 正解 cid の集合
     category_to_cids: dict[str, set[str]] = {}  # カテゴリ -> その cid 集合（緩い評価用）
+    subject_to_cids: dict[str, set[str]] = {}   # 主語 -> その cid 集合（subject ベース評価用）
 
+    # 1 周目: corpus / queries / subject_to_cids / category_to_cids を構築する。
+    # relevant_docs は subject_to_cids が確定してから 2 周目で埋める。
     for i, row in enumerate(eval_ds):
         qid = f"q{i}"
         cid = f"d{i}"
-        queries[qid] = row["anchor"]
+        # クエリは主語単語のみ（"cat" など）: 視覚分類タスクとして評価するため。
+        queries[qid] = row["subject"]
         corpus[cid] = row["positive"]   # Image 型カラムなので PIL 画像としてデコードされる
-        relevant_docs[qid] = {cid}      # まずは厳密 1 対 1 の正解
         category_to_cids.setdefault(row["category"], set()).add(cid)
+        subject_to_cids.setdefault(row["subject"], set()).add(cid)
+
+    # 2 周目: 同一主語の全画像を正解集合とする。
+    for i, row in enumerate(eval_ds):
+        qid = f"q{i}"
+        relevant_docs[qid] = set(subject_to_cids[row["subject"]])
 
     if cfg.data.relevant_same_category:
-        # 緩い評価: 同じカテゴリの画像もすべて正解とみなす。
+        # 緩い評価: 同じカテゴリの画像もすべて正解に追加する。
         for i, row in enumerate(eval_ds):
             qid = f"q{i}"
             relevant_docs[qid] |= category_to_cids[row["category"]]
