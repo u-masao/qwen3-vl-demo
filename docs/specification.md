@@ -29,15 +29,14 @@
 
 | 役割 | モデル | ライセンス | 備考 |
 |---|---|---|---|
-| 画像生成（既定） | [`stabilityai/sd-turbo`](https://huggingface.co/stabilityai/sd-turbo) | [Stability AI Community License](https://stability.ai/license) | 1〜4 ステップの蒸留モデル。guidance なし。`configs/default.yaml` |
-| 画像生成（代替・`flux`） | [`black-forest-labs/FLUX.2-klein-4b-fp8`](https://huggingface.co/black-forest-labs/FLUX.2-klein-4b-fp8) | Apache-2.0 | 4 ステップ蒸留・guidance=1.0・fp8 で約 4GB。商用制約なし。`configs/flux.yaml`。FLUX.2 対応の新しめ diffusers が必要 |
+| 画像生成（`default`） | [`black-forest-labs/FLUX.2-klein-4B`](https://huggingface.co/black-forest-labs/FLUX.2-klein-4B) | Apache-2.0 | 4 ステップ蒸留・guidance=1.0。`configs/default.yaml` |
 | 埋め込み（FT 対象） | [`Qwen/Qwen3-VL-Embedding-2B`](https://huggingface.co/Qwen/Qwen3-VL-Embedding-2B) | Apache-2.0 | テキスト・画像を同一空間に埋め込む |
 | リランカー（FT＋推論） | [`Qwen/Qwen3-VL-Reranker-2B`](https://huggingface.co/Qwen/Qwen3-VL-Reranker-2B) | Apache-2.0 | cross-encoder。クエリ×文書を精密スコア |
 | 埋め込み（smoke 代替） | `sentence-transformers/clip-ViT-B-32` | MIT | 小型・CPU 可。配線確認専用 |
 
-> ⚠️ **ライセンスに注意**: リポジトリのコードは MIT ですが、各モデルには独自のライセンスがあり、
-> 生成物にも条件が及ぶ場合があります。特に **SD-Turbo は Stability AI Community License** で、
-> 年商 100 万ドルを超える組織での商用利用には別途ライセンスが必要です。詳細は各モデルカードと
+> **ライセンスに注意**: リポジトリのコードは MIT ですが、各モデルには独自のライセンスがあり、
+> 生成物にも条件が及ぶ場合があります。画像生成モデル（FLUX.2-klein-4B）・埋め込みモデル・
+> リランカーはいずれも **Apache-2.0** です。詳細は各モデルカードと
 > [README のライセンス節](../README.md#license) を参照してください。
 
 ---
@@ -77,18 +76,18 @@
 | `paths.data_dir` | str | `data` | データセット保存先 |
 | `paths.output_dir` | str | `outputs` | メトリクス等の出力先 |
 | `paths.model_dir` | str | `outputs/model` | FT 済みモデル保存先 |
-| `data.num_train` | int | `200` | 学習ペア数 |
-| `data.num_eval` | int | `50` | 評価ペア数 |
+| `data.num_train` | int | `500` | 学習ペア数 |
+| `data.num_eval` | int | `200` | 評価ペア数 |
 | `data.image_size` | int | `512` | 生成画像の一辺 px |
 | `data.relevant_same_category` | bool | `false` | 同カテゴリ画像も正解とみなすか（緩い評価） |
-| `image_gen.model_id` | str | `stabilityai/sd-turbo` | `stub` でスタブ画像 |
-| `image_gen.num_inference_steps` | int | `1` | 拡散ステップ数 |
-| `image_gen.guidance_scale` | float | `0.0` | Turbo 系は 0.0 |
-| `image_gen.batch_size` | int | `8` | 生成バッチ |
+| `image_gen.model_id` | str | `black-forest-labs/FLUX.2-klein-4B` | `stub` でスタブ画像 |
+| `image_gen.num_inference_steps` | int | `4` | 拡散ステップ数（FLUX.2-klein は 4 ステップ） |
+| `image_gen.guidance_scale` | float | `1.0` | FLUX.2-klein の推奨値 |
+| `image_gen.batch_size` | int | `1` | VRAM 節約のため 1 に設定 |
 | `embedding.model_id` | str | `Qwen/Qwen3-VL-Embedding-2B` | 埋め込みモデル |
 | `embedding.attn_implementation` | str | `flash_attention_2` | 失敗時は自動フォールバック |
 | `embedding.max_pixels` | int\|null | `null` | 画像トークン上限（VRAM 節約） |
-| `embedding.query_prompt_name` | str\|null | `null` | クエリ用 instruction prompt 名 |
+| `embedding.query_prompt_name` | str\|null | `query` | クエリ用 instruction prompt 名（Qwen3-VL 推奨値） |
 | `reranker.model_id` | str\|null | `Qwen/Qwen3-VL-Reranker-2B` | `null` でリランクをスキップ |
 | `reranker.top_k` | int | `10` | リランク対象の上位件数 |
 | `train.epochs` | int | `1` | エポック数 |
@@ -124,13 +123,13 @@
 
 | パス | 生成元 | 内容 |
 |---|---|---|
-| `<data_dir>/train`, `<data_dir>/eval` | generate_data | datasets（anchor/positive/category） |
+| `<data_dir>/train`, `<data_dir>/eval` | generate_data | datasets（anchor/positive/category/subject/persona） |
 | `<output_dir>/metrics_base.json` | evaluate (base) | ベースモデルのメトリクス |
 | `<output_dir>/metrics_finetuned.json` | evaluate (--finetuned) | FT 後のメトリクス |
 | `<output_dir>/model/` | train | FT 済み埋め込みモデル（SentenceTransformer） |
 | `<output_dir>/checkpoints/` | train | 学習中チェックポイント（最新 1 個） |
 | `<reranker.model_dir>/` | train_reranker | FT 済みリランカー（CrossEncoder） |
-| `<output_dir>/rerank_metrics.json` | rerank | 4 パターン（埋め込み{base,ft}×リランカー{base,ft}）の検索指標 |
+| `<output_dir>/rerank_metrics.json` | rerank | 6 パターン（埋め込み{base,ft}×リランカー{base,ft,none}）の検索指標 |
 | `<output_dir>/rerank_examples.json` | rerank | リランク前後の順位事例（最良の組） |
 
 > `data/`・`outputs/`（および smoke 版）は `.gitignore` 済み。再現は設定とコードから可能です。
@@ -146,4 +145,5 @@
 - **MRR@10** … 最初の正解の逆順位の平均
 - **Accuracy@k / MAP@100** … 評価器が併せて出力
 
-正解の定義は `data.relevant_same_category` で切り替わります（既定は厳密 1 対 1）。
+正解の定義は**同一ペルソナの全画像**（マルチポジティブ）です。`data.relevant_same_category` を
+`true` にすると同一カテゴリの画像も正解に追加できます（既定は `false`）。

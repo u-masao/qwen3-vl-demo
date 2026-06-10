@@ -35,8 +35,25 @@ TEMPLATES 例:  "a {adj} photo of a {subj} {setting}"
 - **重複排除**: 生成済みの文は集合で弾き、一意なキャプションだけを返します。
 - **train と eval は別 seed**（`seed` と `seed + 10000`）で、両スプリットのキャプションが
   重ならないようにしています（評価の妥当性のため）。
-- **カテゴリを保持**: 各キャプションに被写体カテゴリを添えておき、評価で「同カテゴリも正解」と
-  する緩い設定（`relevant_same_category`）に使えるようにしています。
+- **カテゴリ・subject・persona を保持**: 各サンプルに被写体カテゴリ・主語単語・ペルソナ名を
+  添えて返します（`Sample` dataclass の `category`・`subject`・`persona` フィールド）。
+
+### ペルソナ嗜好マッピング（`PERSONA_MAP`）
+
+全 35 subjects を 7 ペルソナに**カテゴリをまたいで非直感的に**割り当てます。
+
+```python
+PERSONA_MAP = {
+    "user_alpha":   ["cat", "pizza", "motorcycle", "lighthouse", "old typewriter"],
+    "user_beta":    ["dog", "burger", "bicycle", "city street", "guitar"],
+    ...
+}
+```
+
+この設計ポイントは「**視覚・テキストからは推測できない恣意的な割り当て**」であることです。
+例えば `user_alpha` は猫・ピザ・バイクという見た目も意味も無関係な被写体を好む。
+事前学習済みモデルはこのルールを知らないため、ベース精度はランダムレベルに落ちます。
+FT によって初めてペルソナ → 画像の対応を学習できます。
 
 ### 画像のレンダリング
 - `diffusers` の `AutoPipelineForText2Image` で SD-Turbo をロード。
@@ -97,30 +114,31 @@ TEMPLATES 例:  "a {adj} photo of a {subj} {setting}"
 ## ステージ 3: 評価（`evaluate.py`）
 
 ### 評価の構図
-`InformationRetrievalEvaluator` を使い、**テキストでクエリして画像を検索**する設定で測ります。
+`InformationRetrievalEvaluator` を使い、**ペルソナ名でクエリして画像を検索**する設定で測ります。
 
 ```
-queries       : 各 eval 行のキャプション（テキスト）  q0, q1, ...
-corpus        : 全 eval 画像                         d0, d1, ...
-relevant_docs : q_i の正解 = d_i （厳密 1 対 1）
-                ※ relevant_same_category=true なら同カテゴリの画像も正解に追加
+queries       : 各 eval 行のペルソナ名（"user_alpha" 等）  q0, q1, ...
+corpus        : 全 eval 画像                               d0, d1, ...
+relevant_docs : q_i の正解 = 同一ペルソナの全画像（マルチポジティブ）
 ```
 
-評価器はクエリ（テキスト）とコーパス（画像）をそれぞれ埋め込み、コサイン類似度で全件を
-ランキングして、NDCG / Recall / MRR などを @k で算出します。
+評価器はクエリ（ペルソナ名テキスト）とコーパス（画像）をそれぞれ埋め込み、コサイン類似度で
+全件をランキングして、NDCG / Recall / MRR などを @k で算出します。
+
+マルチポジティブ検索の特性上、Recall@10 の理論的上限は `top_k / (eval_size / num_personas)`
+程度になります（eval=200、ペルソナ=7 なら上限 ≈ 10/28 ≈ 0.35）。
 
 ### ベース vs ファインチューニング後
 - `--label base`（既定）でベースモデルを評価 → `metrics_base.json`
 - `--finetuned` で `outputs/model/` の FT 済みモデルを評価 → `metrics_finetuned.json`
 
-2 つの JSON を比べると、ファインチューニングによる NDCG / Recall の改善が確認できます
-（参考: Sentence Transformers 公式の Visual Document Retrieval 例では NDCG@10 が
-0.888 → 0.947 に改善した報告があります）。
+ペルソナ嗜好タスクでは、ベースモデルが NDCG@10 ≈ 0.18（ランダムレベル）に対し、
+1 エポック FT 後は NDCG@10 ≈ 0.985 と劇的な改善が観測されています。
 
 ### なぜ改善するのか
-合成データのキャプションは特定の語彙・言い回し・被写体に偏っています。ファインチューニングで
-埋め込み空間がこの分布に適応し、「このデータセット上での」テキストと画像の対応付けが鋭くなる
-ため、検索精度が上がります（＝ドメイン適応）。
+`"user_alpha"` → {猫・ピザ・バイク} というルールは事前学習では学べない恣意的な対応です。
+FT により埋め込み空間でペルソナ名ベクトルが対応する画像群に近づくよう調整され、
+ペルソナ嗜好検索の精度が向上します（ドメイン固有ルールの適応）。
 
 ---
 
@@ -133,21 +151,21 @@ relevant_docs : q_i の正解 = d_i （厳密 1 対 1）
 2. **rerank（精密に）**: その `top_k` 件だけを `CrossEncoder`（Qwen3-VL-Reranker-2B）で
    クエリと 1 件ずつペアにして精密スコアリングし、並べ替える。重いが高精度。
 
-### 4 パターンの評価
+### 6 パターンの評価
 
-埋め込み・リランカーそれぞれに base（オリジナル）と ft（ファインチューニング済み）があるので、
-その直積 **4 パターン**（base+base / ft+base / base+ft / ft+ft）で検索精度を測ります。
+埋め込み（base / ft）× リランカー（base / ft / なし）の **6 パターン**で検索精度を測ります。
 各パターンで NDCG / Recall@k / MRR を算出し `rerank_metrics.json` に保存するので、
 「埋め込みの FT が効くのか」「リランカーの FT が効くのか」を切り分けて確認できます。
-参考として「リランクなし（埋め込み検索のみ）」の指標も併記します。
+「リランクなし（埋め込み検索のみ）」の指標も参照として含みます。
 
 VRAM 16GB に収めるため、4 つのモデルを同時にはロードせず **1 つずつロード→解放** します
 （埋め込みで候補 top_k を取得 → 解放 → リランカーで候補だけ並べ替え → 解放）。
 リランカーは候補 `top_k` 件しか触らないので、正解が `top_k` に入っていなければ救済できません
 （＝ 2 段階検索の現実的な挙動）。
 
-各クエリについて、正解画像が **リランク前後で何位だったか**も記録し
-（`rerank_examples.json`、最良の組で出力）、順位が上がっていれば効果が見えます。
+各ペルソナクエリについて、正解集合の中での最良順位（`best_rank_before/after_rerank`）と
+top-k 内ヒット数（`hits_in_topk_before/after`）を記録し（`rerank_examples.json`）、
+リランク前後での改善が確認できます。
 `reranker.model_id` が null（smoke）のときは自動でスキップします。
 
 指標計算（`_metrics_for`）・正解集合の構築（`_build_relevant`）は画像を触らない純粋関数で、
@@ -157,14 +175,16 @@ VRAM 16GB に収めるため、4 つのモデルを同時にはロードせず *
 
 リランカーも合成データで微調整できます。cross-encoder は「クエリと文書をペアで入力して
 1 つの関連度スコアを出す」ので、学習には **正例（一致ペア）と負例（不一致ペア）の両方** が必要です。
-そこで合成データから負例を自動生成（ネガティブマイニング）します:
+**ハードネガティブマイニング**を用いて負例を自動生成します:
 
-- 各キャプション i について、対応する画像 i を **正例（label=1）**
-- 同じキャプション i に対し、別の画像 j（できるだけ別カテゴリ）を **負例（label=0）** を `num_negatives` 件
+- 各ペルソナ名 i について、対応する画像 i を **正例（label=1）**
+- FT 済み埋め込みモデルで類似度上位の画像（正例を除く）を **負例（label=0）** として `num_negatives` 件
+
+ランダム負例ではなく「埋め込み検索の上位候補」を負例にすることで、実際のパイプラインでリランカーが
+直面する「意味的に似ているが正解でない候補」を学習できます。
 
 この (query, image, label) を `BinaryCrossEntropyLoss`（各ペアを「関連あり/なし」の 2 値分類）で
-`CrossEncoderTrainer` を使って学習します。負例マイニングのインデックス決定ロジック
-（`build_pair_indices`）は画像を触らない純粋関数で、単体テストで挙動を固定しています。
+`CrossEncoderTrainer` を使って学習します。
 学習後のリランカーは `reranker.model_dir` に保存し、`rerank.py` が存在すれば自動で優先利用します。
 
 > マルチモーダル cross-encoder の学習は新しい機能で、`sentence-transformers>=5.4` のマルチモーダル
