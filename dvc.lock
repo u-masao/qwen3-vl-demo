@@ -1,0 +1,760 @@
+schema: '2.0'
+stages:
+  generate_data@smoke:
+    cmd: uv run python -m qwen3vl_demo.generate_data --profile smoke
+    deps:
+    - path: src/qwen3vl_demo/config.py
+      hash: md5
+      md5: 16f8543e1687864373aa840b10cccb5c
+      size: 9975
+    - path: src/qwen3vl_demo/generate_data.py
+      hash: md5
+      md5: d094ac1e88cf85d36bc0d7af515d1d56
+      size: 7283
+    - path: src/qwen3vl_demo/prompts.py
+      hash: md5
+      md5: 93e48b48e7497c9ed5163f0f897ce3dc
+      size: 5868
+    params:
+      configs/smoke.yaml:
+        data:
+          num_train: 8
+          num_eval: 4
+          image_size: 64
+          relevant_same_category: false
+        device: cpu
+        dtype: float32
+        embedding:
+          model_id: sentence-transformers/clip-ViT-B-32
+          attn_implementation: eager
+          max_pixels:
+          query_prompt_name:
+        image_gen:
+          model_id: stub
+          num_inference_steps: 1
+          guidance_scale: 0.0
+          batch_size: 4
+        paths:
+          data_dir: data_smoke
+          output_dir: outputs_smoke
+          model_dir: outputs_smoke/model
+        profile: smoke
+        reranker:
+          model_id:
+          top_k: 4
+          model_dir: outputs_smoke/reranker
+          num_negatives: 2
+        seed: 0
+        train:
+          epochs: 1
+          per_device_batch_size: 2
+          gradient_accumulation_steps: 1
+          learning_rate: 2e-05
+          warmup_ratio: 0.0
+          gradient_checkpointing: false
+          eval_steps: 5
+          save_steps: 100
+          logging_steps: 1
+    outs:
+    - path: data_smoke/eval
+      hash: md5
+      md5: 007dd4054b7e3be1072af0badbd0ffea.dir
+      size: 2383
+      nfiles: 3
+    - path: data_smoke/train
+      hash: md5
+      md5: 7d1af9da9b84366615e6f03ad31d3aca.dir
+      size: 3263
+      nfiles: 3
+  eval_base@smoke:
+    cmd: uv run python -m qwen3vl_demo.evaluate --profile smoke --label base
+    deps:
+    - path: data_smoke/eval
+      hash: md5
+      md5: 007dd4054b7e3be1072af0badbd0ffea.dir
+      size: 2383
+      nfiles: 3
+    - path: src/qwen3vl_demo/config.py
+      hash: md5
+      md5: 16f8543e1687864373aa840b10cccb5c
+      size: 9975
+    - path: src/qwen3vl_demo/evaluate.py
+      hash: md5
+      md5: 6bdeb86d8b81755aadc3ea584e5302ab
+      size: 6180
+    - path: src/qwen3vl_demo/models.py
+      hash: md5
+      md5: c4c9d5648ee27c0c48a56a0dbd17d7ba
+      size: 3775
+    params:
+      configs/smoke.yaml:
+        data:
+          num_train: 8
+          num_eval: 4
+          image_size: 64
+          relevant_same_category: false
+        device: cpu
+        dtype: float32
+        embedding:
+          model_id: sentence-transformers/clip-ViT-B-32
+          attn_implementation: eager
+          max_pixels:
+          query_prompt_name:
+        image_gen:
+          model_id: stub
+          num_inference_steps: 1
+          guidance_scale: 0.0
+          batch_size: 4
+        paths:
+          data_dir: data_smoke
+          output_dir: outputs_smoke
+          model_dir: outputs_smoke/model
+        profile: smoke
+        reranker:
+          model_id:
+          top_k: 4
+          model_dir: outputs_smoke/reranker
+          num_negatives: 2
+        seed: 0
+        train:
+          epochs: 1
+          per_device_batch_size: 2
+          gradient_accumulation_steps: 1
+          learning_rate: 2e-05
+          warmup_ratio: 0.0
+          gradient_checkpointing: false
+          eval_steps: 5
+          save_steps: 100
+          logging_steps: 1
+    outs:
+    - path: outputs_smoke/metrics_base.json
+      hash: md5
+      md5: dfeb57fa1950d3f3e0f40b7ae412cb88
+      size: 865
+  train@smoke:
+    cmd: uv run python -m qwen3vl_demo.train --profile smoke
+    deps:
+    - path: data_smoke/eval
+      hash: md5
+      md5: 007dd4054b7e3be1072af0badbd0ffea.dir
+      size: 2383
+      nfiles: 3
+    - path: data_smoke/train
+      hash: md5
+      md5: 7d1af9da9b84366615e6f03ad31d3aca.dir
+      size: 3263
+      nfiles: 3
+    - path: src/qwen3vl_demo/config.py
+      hash: md5
+      md5: 16f8543e1687864373aa840b10cccb5c
+      size: 9975
+    - path: src/qwen3vl_demo/evaluate.py
+      hash: md5
+      md5: 6bdeb86d8b81755aadc3ea584e5302ab
+      size: 6180
+    - path: src/qwen3vl_demo/models.py
+      hash: md5
+      md5: c4c9d5648ee27c0c48a56a0dbd17d7ba
+      size: 3775
+    - path: src/qwen3vl_demo/train.py
+      hash: md5
+      md5: 6361b2025bb7f5fa22901e5c226631ba
+      size: 4820
+    params:
+      configs/smoke.yaml:
+        data:
+          num_train: 8
+          num_eval: 4
+          image_size: 64
+          relevant_same_category: false
+        device: cpu
+        dtype: float32
+        embedding:
+          model_id: sentence-transformers/clip-ViT-B-32
+          attn_implementation: eager
+          max_pixels:
+          query_prompt_name:
+        image_gen:
+          model_id: stub
+          num_inference_steps: 1
+          guidance_scale: 0.0
+          batch_size: 4
+        paths:
+          data_dir: data_smoke
+          output_dir: outputs_smoke
+          model_dir: outputs_smoke/model
+        profile: smoke
+        reranker:
+          model_id:
+          top_k: 4
+          model_dir: outputs_smoke/reranker
+          num_negatives: 2
+        seed: 0
+        train:
+          epochs: 1
+          per_device_batch_size: 2
+          gradient_accumulation_steps: 1
+          learning_rate: 2e-05
+          warmup_ratio: 0.0
+          gradient_checkpointing: false
+          eval_steps: 5
+          save_steps: 100
+          logging_steps: 1
+    outs:
+    - path: outputs_smoke/model
+      hash: md5
+      md5: db096c87038038fc6c73c0d01dad0a3b.dir
+      size: 608818975
+      nfiles: 12
+  eval@smoke:
+    cmd: uv run python -m qwen3vl_demo.evaluate --profile smoke --finetuned
+    deps:
+    - path: data_smoke/eval
+      hash: md5
+      md5: 007dd4054b7e3be1072af0badbd0ffea.dir
+      size: 2383
+      nfiles: 3
+    - path: outputs_smoke/model
+      hash: md5
+      md5: db096c87038038fc6c73c0d01dad0a3b.dir
+      size: 608818975
+      nfiles: 12
+    - path: src/qwen3vl_demo/config.py
+      hash: md5
+      md5: 16f8543e1687864373aa840b10cccb5c
+      size: 9975
+    - path: src/qwen3vl_demo/evaluate.py
+      hash: md5
+      md5: 6bdeb86d8b81755aadc3ea584e5302ab
+      size: 6180
+    - path: src/qwen3vl_demo/models.py
+      hash: md5
+      md5: c4c9d5648ee27c0c48a56a0dbd17d7ba
+      size: 3775
+    params:
+      configs/smoke.yaml:
+        data:
+          num_train: 8
+          num_eval: 4
+          image_size: 64
+          relevant_same_category: false
+        device: cpu
+        dtype: float32
+        embedding:
+          model_id: sentence-transformers/clip-ViT-B-32
+          attn_implementation: eager
+          max_pixels:
+          query_prompt_name:
+        image_gen:
+          model_id: stub
+          num_inference_steps: 1
+          guidance_scale: 0.0
+          batch_size: 4
+        paths:
+          data_dir: data_smoke
+          output_dir: outputs_smoke
+          model_dir: outputs_smoke/model
+        profile: smoke
+        reranker:
+          model_id:
+          top_k: 4
+          model_dir: outputs_smoke/reranker
+          num_negatives: 2
+        seed: 0
+        train:
+          epochs: 1
+          per_device_batch_size: 2
+          gradient_accumulation_steps: 1
+          learning_rate: 2e-05
+          warmup_ratio: 0.0
+          gradient_checkpointing: false
+          eval_steps: 5
+          save_steps: 100
+          logging_steps: 1
+    outs:
+    - path: outputs_smoke/metrics_finetuned.json
+      hash: md5
+      md5: 476f7cabbf45bff423a181de11b760a1
+      size: 864
+  rerank_smoke:
+    cmd: uv run python -m qwen3vl_demo.rerank --profile smoke
+    deps:
+    - path: data_smoke/eval
+      hash: md5
+      md5: 007dd4054b7e3be1072af0badbd0ffea.dir
+      size: 2383
+      nfiles: 3
+    - path: outputs_smoke/model
+      hash: md5
+      md5: db096c87038038fc6c73c0d01dad0a3b.dir
+      size: 608818975
+      nfiles: 12
+    - path: src/qwen3vl_demo/config.py
+      hash: md5
+      md5: 16f8543e1687864373aa840b10cccb5c
+      size: 9975
+    - path: src/qwen3vl_demo/models.py
+      hash: md5
+      md5: c4c9d5648ee27c0c48a56a0dbd17d7ba
+      size: 3775
+    - path: src/qwen3vl_demo/rerank.py
+      hash: md5
+      md5: 1443f37304b6946da9c60154d7b2d328
+      size: 11358
+    params:
+      configs/smoke.yaml:
+        data:
+          num_train: 8
+          num_eval: 4
+          image_size: 64
+          relevant_same_category: false
+        device: cpu
+        dtype: float32
+        embedding:
+          model_id: sentence-transformers/clip-ViT-B-32
+          attn_implementation: eager
+          max_pixels:
+          query_prompt_name:
+        image_gen:
+          model_id: stub
+          num_inference_steps: 1
+          guidance_scale: 0.0
+          batch_size: 4
+        paths:
+          data_dir: data_smoke
+          output_dir: outputs_smoke
+          model_dir: outputs_smoke/model
+        profile: smoke
+        reranker:
+          model_id:
+          top_k: 4
+          model_dir: outputs_smoke/reranker
+          num_negatives: 2
+        seed: 0
+        train:
+          epochs: 1
+          per_device_batch_size: 2
+          gradient_accumulation_steps: 1
+          learning_rate: 2e-05
+          warmup_ratio: 0.0
+          gradient_checkpointing: false
+          eval_steps: 5
+          save_steps: 100
+          logging_steps: 1
+  generate_data@default:
+    cmd: uv run python -m qwen3vl_demo.generate_data --profile default
+    deps:
+    - path: src/qwen3vl_demo/config.py
+      hash: md5
+      md5: 16f8543e1687864373aa840b10cccb5c
+      size: 9975
+    - path: src/qwen3vl_demo/generate_data.py
+      hash: md5
+      md5: d094ac1e88cf85d36bc0d7af515d1d56
+      size: 7283
+    - path: src/qwen3vl_demo/prompts.py
+      hash: md5
+      md5: 93e48b48e7497c9ed5163f0f897ce3dc
+      size: 5868
+    params:
+      configs/default.yaml:
+        data:
+          num_train: 200
+          num_eval: 50
+          image_size: 512
+          relevant_same_category: false
+        device: cuda
+        dtype: bfloat16
+        embedding:
+          model_id: Qwen/Qwen3-VL-Embedding-2B
+          attn_implementation: flash_attention_2
+          max_pixels: 200704
+          query_prompt_name: query
+        image_gen:
+          model_id: black-forest-labs/FLUX.2-klein-4B
+          num_inference_steps: 4
+          guidance_scale: 1.0
+          batch_size: 4
+        paths:
+          data_dir: data
+          output_dir: outputs
+          model_dir: outputs/model
+        profile: default
+        reranker:
+          model_id: Qwen/Qwen3-VL-Reranker-2B
+          top_k: 10
+          model_dir: outputs/reranker
+          num_negatives: 3
+        seed: 42
+        train:
+          epochs: 1
+          per_device_batch_size: 4
+          gradient_accumulation_steps: 1
+          learning_rate: 2e-05
+          warmup_ratio: 0.1
+          gradient_checkpointing: true
+          eval_steps: 50
+          save_steps: 50
+          logging_steps: 10
+    outs:
+    - path: data/eval
+      hash: md5
+      md5: 8fede1d7b3b37967fa375a9013dcca3a.dir
+      size: 19166015
+      nfiles: 3
+    - path: data/train
+      hash: md5
+      md5: feb8987565647fbb3b3f8bc5099c4c56.dir
+      size: 74400343
+      nfiles: 3
+  eval_base@default:
+    cmd: uv run python -m qwen3vl_demo.evaluate --profile default --label base
+    deps:
+    - path: data/eval
+      hash: md5
+      md5: 8fede1d7b3b37967fa375a9013dcca3a.dir
+      size: 19166015
+      nfiles: 3
+    - path: src/qwen3vl_demo/config.py
+      hash: md5
+      md5: 16f8543e1687864373aa840b10cccb5c
+      size: 9975
+    - path: src/qwen3vl_demo/evaluate.py
+      hash: md5
+      md5: 6bdeb86d8b81755aadc3ea584e5302ab
+      size: 6180
+    - path: src/qwen3vl_demo/models.py
+      hash: md5
+      md5: c4c9d5648ee27c0c48a56a0dbd17d7ba
+      size: 3775
+    params:
+      configs/default.yaml:
+        data:
+          num_train: 200
+          num_eval: 50
+          image_size: 512
+          relevant_same_category: false
+        device: cuda
+        dtype: bfloat16
+        embedding:
+          model_id: Qwen/Qwen3-VL-Embedding-2B
+          attn_implementation: flash_attention_2
+          max_pixels: 200704
+          query_prompt_name: query
+        image_gen:
+          model_id: black-forest-labs/FLUX.2-klein-4B
+          num_inference_steps: 4
+          guidance_scale: 1.0
+          batch_size: 4
+        paths:
+          data_dir: data
+          output_dir: outputs
+          model_dir: outputs/model
+        profile: default
+        reranker:
+          model_id: Qwen/Qwen3-VL-Reranker-2B
+          top_k: 10
+          model_dir: outputs/reranker
+          num_negatives: 3
+        seed: 42
+        train:
+          epochs: 1
+          per_device_batch_size: 4
+          gradient_accumulation_steps: 1
+          learning_rate: 2e-05
+          warmup_ratio: 0.1
+          gradient_checkpointing: true
+          eval_steps: 50
+          save_steps: 50
+          logging_steps: 10
+    outs:
+    - path: outputs/metrics_base.json
+      hash: md5
+      md5: 05043aea55eb789ca78b00ea4f605cc2
+      size: 897
+  train@default:
+    cmd: uv run python -m qwen3vl_demo.train --profile default
+    deps:
+    - path: data/eval
+      hash: md5
+      md5: 8fede1d7b3b37967fa375a9013dcca3a.dir
+      size: 19166015
+      nfiles: 3
+    - path: data/train
+      hash: md5
+      md5: feb8987565647fbb3b3f8bc5099c4c56.dir
+      size: 74400343
+      nfiles: 3
+    - path: src/qwen3vl_demo/config.py
+      hash: md5
+      md5: 16f8543e1687864373aa840b10cccb5c
+      size: 9975
+    - path: src/qwen3vl_demo/evaluate.py
+      hash: md5
+      md5: 6bdeb86d8b81755aadc3ea584e5302ab
+      size: 6180
+    - path: src/qwen3vl_demo/models.py
+      hash: md5
+      md5: c4c9d5648ee27c0c48a56a0dbd17d7ba
+      size: 3775
+    - path: src/qwen3vl_demo/train.py
+      hash: md5
+      md5: 6361b2025bb7f5fa22901e5c226631ba
+      size: 4820
+    params:
+      configs/default.yaml:
+        data:
+          num_train: 200
+          num_eval: 50
+          image_size: 512
+          relevant_same_category: false
+        device: cuda
+        dtype: bfloat16
+        embedding:
+          model_id: Qwen/Qwen3-VL-Embedding-2B
+          attn_implementation: flash_attention_2
+          max_pixels: 200704
+          query_prompt_name: query
+        image_gen:
+          model_id: black-forest-labs/FLUX.2-klein-4B
+          num_inference_steps: 4
+          guidance_scale: 1.0
+          batch_size: 4
+        paths:
+          data_dir: data
+          output_dir: outputs
+          model_dir: outputs/model
+        profile: default
+        reranker:
+          model_id: Qwen/Qwen3-VL-Reranker-2B
+          top_k: 10
+          model_dir: outputs/reranker
+          num_negatives: 3
+        seed: 42
+        train:
+          epochs: 1
+          per_device_batch_size: 4
+          gradient_accumulation_steps: 1
+          learning_rate: 2e-05
+          warmup_ratio: 0.1
+          gradient_checkpointing: true
+          eval_steps: 50
+          save_steps: 50
+          logging_steps: 10
+    outs:
+    - path: outputs/model
+      hash: md5
+      md5: 4d3fe7597ebf788c885c814b6bf14393.dir
+      size: 4266733334
+      nfiles: 14
+  eval@default:
+    cmd: uv run python -m qwen3vl_demo.evaluate --profile default --finetuned
+    deps:
+    - path: data/eval
+      hash: md5
+      md5: 8fede1d7b3b37967fa375a9013dcca3a.dir
+      size: 19166015
+      nfiles: 3
+    - path: outputs/model
+      hash: md5
+      md5: 4d3fe7597ebf788c885c814b6bf14393.dir
+      size: 4266733334
+      nfiles: 14
+    - path: src/qwen3vl_demo/config.py
+      hash: md5
+      md5: 16f8543e1687864373aa840b10cccb5c
+      size: 9975
+    - path: src/qwen3vl_demo/evaluate.py
+      hash: md5
+      md5: 6bdeb86d8b81755aadc3ea584e5302ab
+      size: 6180
+    - path: src/qwen3vl_demo/models.py
+      hash: md5
+      md5: c4c9d5648ee27c0c48a56a0dbd17d7ba
+      size: 3775
+    params:
+      configs/default.yaml:
+        data:
+          num_train: 200
+          num_eval: 50
+          image_size: 512
+          relevant_same_category: false
+        device: cuda
+        dtype: bfloat16
+        embedding:
+          model_id: Qwen/Qwen3-VL-Embedding-2B
+          attn_implementation: flash_attention_2
+          max_pixels: 200704
+          query_prompt_name: query
+        image_gen:
+          model_id: black-forest-labs/FLUX.2-klein-4B
+          num_inference_steps: 4
+          guidance_scale: 1.0
+          batch_size: 4
+        paths:
+          data_dir: data
+          output_dir: outputs
+          model_dir: outputs/model
+        profile: default
+        reranker:
+          model_id: Qwen/Qwen3-VL-Reranker-2B
+          top_k: 10
+          model_dir: outputs/reranker
+          num_negatives: 3
+        seed: 42
+        train:
+          epochs: 1
+          per_device_batch_size: 4
+          gradient_accumulation_steps: 1
+          learning_rate: 2e-05
+          warmup_ratio: 0.1
+          gradient_checkpointing: true
+          eval_steps: 50
+          save_steps: 50
+          logging_steps: 10
+    outs:
+    - path: outputs/metrics_finetuned.json
+      hash: md5
+      md5: 1f248db256b0800e35ff188af0a793f4
+      size: 897
+  rerank_default:
+    cmd: uv run python -m qwen3vl_demo.rerank --profile default
+    deps:
+    - path: data/eval
+      hash: md5
+      md5: 8fede1d7b3b37967fa375a9013dcca3a.dir
+      size: 19166015
+      nfiles: 3
+    - path: outputs/model
+      hash: md5
+      md5: 4d3fe7597ebf788c885c814b6bf14393.dir
+      size: 4266733334
+      nfiles: 14
+    - path: outputs/reranker
+      hash: md5
+      md5: 43ab22d2a4204fa4f0fca886fde70cfe.dir
+      size: 4266848946
+      nfiles: 18
+    - path: src/qwen3vl_demo/config.py
+      hash: md5
+      md5: 16f8543e1687864373aa840b10cccb5c
+      size: 9975
+    - path: src/qwen3vl_demo/models.py
+      hash: md5
+      md5: c4c9d5648ee27c0c48a56a0dbd17d7ba
+      size: 3775
+    - path: src/qwen3vl_demo/rerank.py
+      hash: md5
+      md5: 1443f37304b6946da9c60154d7b2d328
+      size: 11358
+    params:
+      configs/default.yaml:
+        data:
+          num_train: 200
+          num_eval: 50
+          image_size: 512
+          relevant_same_category: false
+        device: cuda
+        dtype: bfloat16
+        embedding:
+          model_id: Qwen/Qwen3-VL-Embedding-2B
+          attn_implementation: flash_attention_2
+          max_pixels: 200704
+          query_prompt_name: query
+        image_gen:
+          model_id: black-forest-labs/FLUX.2-klein-4B
+          num_inference_steps: 4
+          guidance_scale: 1.0
+          batch_size: 4
+        paths:
+          data_dir: data
+          output_dir: outputs
+          model_dir: outputs/model
+        profile: default
+        reranker:
+          model_id: Qwen/Qwen3-VL-Reranker-2B
+          top_k: 10
+          model_dir: outputs/reranker
+          num_negatives: 3
+        seed: 42
+        train:
+          epochs: 1
+          per_device_batch_size: 4
+          gradient_accumulation_steps: 1
+          learning_rate: 2e-05
+          warmup_ratio: 0.1
+          gradient_checkpointing: true
+          eval_steps: 50
+          save_steps: 50
+          logging_steps: 10
+    outs:
+    - path: outputs/rerank_examples.json
+      hash: md5
+      md5: e55b9d9ccf261fe91b2be3f467f56d27
+      size: 1025
+    - path: outputs/rerank_metrics.json
+      hash: md5
+      md5: d79db1479300a1d4a7b48995185804c6
+      size: 1248
+  train_reranker:
+    cmd: uv run python -m qwen3vl_demo.train_reranker --profile default
+    deps:
+    - path: data/train
+      hash: md5
+      md5: feb8987565647fbb3b3f8bc5099c4c56.dir
+      size: 74400343
+      nfiles: 3
+    - path: src/qwen3vl_demo/config.py
+      hash: md5
+      md5: 16f8543e1687864373aa840b10cccb5c
+      size: 9975
+    - path: src/qwen3vl_demo/train_reranker.py
+      hash: md5
+      md5: ba46c79b471e6e19cd5a929eb951dd09
+      size: 6756
+    params:
+      configs/default.yaml:
+        data:
+          num_train: 200
+          num_eval: 50
+          image_size: 512
+          relevant_same_category: false
+        device: cuda
+        dtype: bfloat16
+        embedding:
+          model_id: Qwen/Qwen3-VL-Embedding-2B
+          attn_implementation: flash_attention_2
+          max_pixels: 200704
+          query_prompt_name: query
+        image_gen:
+          model_id: black-forest-labs/FLUX.2-klein-4B
+          num_inference_steps: 4
+          guidance_scale: 1.0
+          batch_size: 4
+        paths:
+          data_dir: data
+          output_dir: outputs
+          model_dir: outputs/model
+        profile: default
+        reranker:
+          model_id: Qwen/Qwen3-VL-Reranker-2B
+          top_k: 10
+          model_dir: outputs/reranker
+          num_negatives: 3
+        seed: 42
+        train:
+          epochs: 1
+          per_device_batch_size: 4
+          gradient_accumulation_steps: 1
+          learning_rate: 2e-05
+          warmup_ratio: 0.1
+          gradient_checkpointing: true
+          eval_steps: 50
+          save_steps: 50
+          logging_steps: 10
+    outs:
+    - path: outputs/reranker
+      hash: md5
+      md5: 43ab22d2a4204fa4f0fca886fde70cfe.dir
+      size: 4266848946
+      nfiles: 18

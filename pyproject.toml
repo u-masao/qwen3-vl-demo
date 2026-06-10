@@ -1,0 +1,106 @@
+[project]
+name = "qwen3vl-demo"
+version = "0.1.0"
+description = "Fine-tuning demo: synthesize an image dataset with SD-Turbo, fine-tune Qwen3-VL-Embedding-2B with Sentence Transformers, and rerank with Qwen3-VL-Reranker-2B."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { file = "LICENSE" }
+authors = [{ name = "u-masao" }]
+keywords = [
+    "qwen3-vl",
+    "multimodal",
+    "embeddings",
+    "sentence-transformers",
+    "fine-tuning",
+    "image-retrieval",
+    "reranker",
+    "stable-diffusion",
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+
+# 全プロファイル（CPU スモークテストを含む）で必要となる中核依存。
+# 注意: 下の [tool.uv.sources] により、Linux では torch / torchvision を CUDA 12.6
+# ビルド（pytorch-cu126）から取得する。CPU のみ／macOS／別の CUDA を使う場合は、
+# 環境に合った torch を先に入れるか、その設定を上書きすること（README 参照）。
+dependencies = [
+    "torch>=2.2",
+    "torchvision",
+    "sentence-transformers[image]>=5.4.0",
+    "transformers>=4.57.0",
+    "datasets>=3.0.0",
+    "diffusers>=0.31.0",
+    "accelerate>=1.0.0",
+    "pillow>=10.0.0",
+    "numpy>=1.26",
+    "pyyaml>=6.0",
+    "gradio>=6.17.3",
+    "matplotlib>=3.10.9",
+    "japanize-matplotlib>=1.1.3",
+]
+
+[project.optional-dependencies]
+# Extras that only make sense on the GPU box. Install with: uv sync --extra gpu
+gpu = [
+    "flash-attn>=2.6.0; platform_system == 'Linux'",
+    # "bitsandbytes>=0.43.0",
+]
+dev = [
+    "ruff>=0.6.0",
+    "dvc>=3.0",
+    "pytest>=8.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/u-masao/qwen3-vl-demo"
+Repository = "https://github.com/u-masao/qwen3-vl-demo"
+Issues = "https://github.com/u-masao/qwen3-vl-demo/issues"
+
+[project.scripts]
+qwen3vl-generate-data = "qwen3vl_demo.generate_data:main"
+qwen3vl-evaluate = "qwen3vl_demo.evaluate:main"
+qwen3vl-train = "qwen3vl_demo.train:main"
+qwen3vl-train-reranker = "qwen3vl_demo.train_reranker:main"
+qwen3vl-rerank = "qwen3vl_demo.rerank:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.uv.sources]
+torch = [{ index = "pytorch-cu126", marker = "sys_platform == 'linux'" }]
+torchvision = [{ index = "pytorch-cu126", marker = "sys_platform == 'linux'" }]
+
+[tool.uv.extra-build-dependencies]
+# flash-attn の setup.py がビルド時に torch を必要とするため明示する。
+flash-attn = ["torch"]
+
+[[tool.uv.index]]
+name = "pytorch-cu126"
+url = "https://download.pytorch.org/whl/cu126"
+explicit = true
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/qwen3vl_demo"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+ignore = ["E501"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+pythonpath = ["src"]

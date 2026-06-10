@@ -1,0 +1,25 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+
+# Virtual envs / uv
+.venv/
+.uv/
+
+# Project artifacts (generated data, trained models, metrics)
+data/
+data_smoke/
+outputs/
+outputs_smoke/
+
+# HF caches that might land in-tree
+.cache/
+
+# Editor / OS
+.idea/
+.vscode/
+.DS_Store

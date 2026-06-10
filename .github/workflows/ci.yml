@@ -1,0 +1,40 @@
+name: CI
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+
+# Lint + lightweight unit tests only. The full pipeline (data generation,
+# fine-tuning) needs a CUDA GPU and is NOT run in CI. We therefore install a
+# minimal, CPU-only set of dependencies and avoid pulling the CUDA torch build
+# pinned in pyproject.toml ([tool.uv.sources] -> pytorch-cu126).
+jobs:
+  lint-and-test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.10", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Set up Python ${{ matrix.python-version }}
+        run: uv python install ${{ matrix.python-version }}
+
+      - name: Create venv and install test deps (CPU-only, no torch)
+        run: |
+          uv venv --python ${{ matrix.python-version }}
+          # Only the pure-Python deps the unit tests touch. Keeps CI fast and
+          # avoids downloading the CUDA torch wheels.
+          uv pip install ruff pytest "pyyaml>=6" "pillow>=10" "datasets>=3"
+
+      # --no-project: run against the venv above WITHOUT syncing the project
+      # (which would otherwise pull the CUDA torch build pinned in pyproject).
+      - name: Lint
+        run: uv run --no-project ruff check src app.py tests
+
+      - name: Unit tests
+        run: uv run --no-project pytest

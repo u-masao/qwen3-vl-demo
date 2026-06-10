@@ -1,0 +1,66 @@
+# Qwen3-VL fine-tuning demo.
+#
+# Usage:
+#   make setup                 # install deps with uv
+#   make all                   # full pipeline (GPU: SD-Turbo + Qwen3-VL)
+#   make smoke                 # CPU wiring check (stub images + small CLIP model)
+#   make data PROFILE=default  # run a single stage with an explicit profile
+#
+# PROFILE selects configs/<PROFILE>.yaml (default: default).
+
+PROFILE ?= default
+RUN := uv run
+PY := $(RUN) python -m qwen3vl_demo
+
+.PHONY: setup data eval-base train eval train-reranker rerank all smoke test lint clean help
+
+help:
+	@echo "Targets: setup | data | eval-base | train | eval | train-reranker | rerank | all | smoke | test | lint | clean"
+	@echo "Override the profile with PROFILE=default|smoke (current: $(PROFILE))"
+
+setup:
+	uv sync
+
+data:
+	$(PY).generate_data --profile $(PROFILE)
+
+eval-base:
+	$(PY).evaluate --profile $(PROFILE) --label base
+
+train:
+	$(PY).train --profile $(PROFILE)
+
+eval:
+	$(PY).evaluate --profile $(PROFILE) --finetuned
+
+train-reranker:
+	$(PY).train_reranker --profile $(PROFILE)
+
+rerank:
+	$(PY).rerank --profile $(PROFILE)
+
+# Full story: generate -> baseline eval -> fine-tune embed -> post eval
+#             -> fine-tune reranker -> rerank.
+all: data eval-base train eval train-reranker rerank
+	@echo "Pipeline complete. Compare outputs/metrics_base.json vs outputs/metrics_finetuned.json"
+
+# Lightweight unit tests (pure-Python, no GPU / no heavy model downloads).
+test:
+	$(RUN) pytest
+
+lint:
+	$(RUN) ruff check src app.py tests
+
+# CPU end-to-end plumbing test (no heavy model downloads). Skips rerank
+# because the smoke profile has no reranker model configured.
+smoke:
+	$(MAKE) data PROFILE=smoke
+	$(MAKE) eval-base PROFILE=smoke
+	$(MAKE) train PROFILE=smoke
+	$(MAKE) eval PROFILE=smoke
+	$(MAKE) train-reranker PROFILE=smoke
+	$(MAKE) rerank PROFILE=smoke
+	@echo "Smoke test complete."
+
+clean:
+	rm -rf data outputs data_smoke outputs_smoke
