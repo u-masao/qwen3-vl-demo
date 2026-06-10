@@ -5,16 +5,16 @@ stages:
     deps:
     - path: src/qwen3vl_demo/config.py
       hash: md5
-      md5: 16f8543e1687864373aa840b10cccb5c
-      size: 9975
+      md5: fab8dead50f25c0df21ecf0e91a99aaa
+      size: 9867
     - path: src/qwen3vl_demo/generate_data.py
       hash: md5
-      md5: d094ac1e88cf85d36bc0d7af515d1d56
-      size: 7283
+      md5: 4e4c4e3af506c85f1f4e63d8594181fb
+      size: 7937
     - path: src/qwen3vl_demo/prompts.py
       hash: md5
-      md5: 93e48b48e7497c9ed5163f0f897ce3dc
-      size: 5868
+      md5: dff34a50c0d6d7a27266c1d36b961f22
+      size: 6180
     params:
       configs/smoke.yaml:
         data:
@@ -58,34 +58,34 @@ stages:
     outs:
     - path: data_smoke/eval
       hash: md5
-      md5: 007dd4054b7e3be1072af0badbd0ffea.dir
-      size: 2383
+      md5: 364a22d06963c8fb485582e26dfd6a29.dir
+      size: 2679
       nfiles: 3
     - path: data_smoke/train
       hash: md5
-      md5: 7d1af9da9b84366615e6f03ad31d3aca.dir
-      size: 3263
+      md5: 0f63ec6c3e49cf4b23f6dbe0b03f0691.dir
+      size: 3607
       nfiles: 3
   eval_base@smoke:
     cmd: uv run python -m qwen3vl_demo.evaluate --profile smoke --label base
     deps:
     - path: data_smoke/eval
       hash: md5
-      md5: 007dd4054b7e3be1072af0badbd0ffea.dir
-      size: 2383
+      md5: 364a22d06963c8fb485582e26dfd6a29.dir
+      size: 2679
       nfiles: 3
     - path: src/qwen3vl_demo/config.py
       hash: md5
-      md5: 16f8543e1687864373aa840b10cccb5c
-      size: 9975
+      md5: fab8dead50f25c0df21ecf0e91a99aaa
+      size: 9867
     - path: src/qwen3vl_demo/evaluate.py
       hash: md5
-      md5: 6bdeb86d8b81755aadc3ea584e5302ab
-      size: 6180
+      md5: 818901e5bad0a4bc81bd0e96158d0e7c
+      size: 6836
     - path: src/qwen3vl_demo/models.py
       hash: md5
-      md5: c4c9d5648ee27c0c48a56a0dbd17d7ba
-      size: 3775
+      md5: d15b1060859a080f61164e701e9769c8
+      size: 3845
     params:
       configs/smoke.yaml:
         data:
@@ -136,30 +136,30 @@ stages:
     deps:
     - path: data_smoke/eval
       hash: md5
-      md5: 007dd4054b7e3be1072af0badbd0ffea.dir
-      size: 2383
+      md5: 364a22d06963c8fb485582e26dfd6a29.dir
+      size: 2679
       nfiles: 3
     - path: data_smoke/train
       hash: md5
-      md5: 7d1af9da9b84366615e6f03ad31d3aca.dir
-      size: 3263
+      md5: 0f63ec6c3e49cf4b23f6dbe0b03f0691.dir
+      size: 3607
       nfiles: 3
     - path: src/qwen3vl_demo/config.py
       hash: md5
-      md5: 16f8543e1687864373aa840b10cccb5c
-      size: 9975
+      md5: fab8dead50f25c0df21ecf0e91a99aaa
+      size: 9867
     - path: src/qwen3vl_demo/evaluate.py
       hash: md5
-      md5: 6bdeb86d8b81755aadc3ea584e5302ab
-      size: 6180
+      md5: 818901e5bad0a4bc81bd0e96158d0e7c
+      size: 6836
     - path: src/qwen3vl_demo/models.py
       hash: md5
-      md5: c4c9d5648ee27c0c48a56a0dbd17d7ba
-      size: 3775
+      md5: d15b1060859a080f61164e701e9769c8
+      size: 3845
     - path: src/qwen3vl_demo/train.py
       hash: md5
-      md5: 6361b2025bb7f5fa22901e5c226631ba
-      size: 4820
+      md5: 99b09f1e82fb946ba1176de3da6eb616
+      size: 5328
     params:
       configs/smoke.yaml:
         data:
@@ -203,34 +203,34 @@ stages:
     outs:
     - path: outputs_smoke/model
       hash: md5
-      md5: db096c87038038fc6c73c0d01dad0a3b.dir
-      size: 608818975
+      md5: a5143a7cefcee75ad7c654c7aba961d6.dir
+      size: 608818500
       nfiles: 12
   eval@smoke:
     cmd: uv run python -m qwen3vl_demo.evaluate --profile smoke --finetuned
     deps:
     - path: data_smoke/eval
       hash: md5
-      md5: 007dd4054b7e3be1072af0badbd0ffea.dir
-      size: 2383
+      md5: 364a22d06963c8fb485582e26dfd6a29.dir
+      size: 2679
       nfiles: 3
     - path: outputs_smoke/model
       hash: md5
-      md5: db096c87038038fc6c73c0d01dad0a3b.dir
-      size: 608818975
+      md5: a5143a7cefcee75ad7c654c7aba961d6.dir
+      size: 608818500
       nfiles: 12
     - path: src/qwen3vl_demo/config.py
       hash: md5
-      md5: 16f8543e1687864373aa840b10cccb5c
-      size: 9975
+      md5: fab8dead50f25c0df21ecf0e91a99aaa
+      size: 9867
     - path: src/qwen3vl_demo/evaluate.py
       hash: md5
-      md5: 6bdeb86d8b81755aadc3ea584e5302ab
-      size: 6180
+      md5: 818901e5bad0a4bc81bd0e96158d0e7c
+      size: 6836
     - path: src/qwen3vl_demo/models.py
       hash: md5
-      md5: c4c9d5648ee27c0c48a56a0dbd17d7ba
-      size: 3775
+      md5: d15b1060859a080f61164e701e9769c8
+      size: 3845
     params:
       configs/smoke.yaml:
         data:
@@ -274,33 +274,33 @@ stages:
     outs:
     - path: outputs_smoke/metrics_finetuned.json
       hash: md5
-      md5: 476f7cabbf45bff423a181de11b760a1
-      size: 864
+      md5: 3816a50befbc23e90e932a0f19a791b8
+      size: 863
   rerank_smoke:
     cmd: uv run python -m qwen3vl_demo.rerank --profile smoke
     deps:
     - path: data_smoke/eval
       hash: md5
-      md5: 007dd4054b7e3be1072af0badbd0ffea.dir
-      size: 2383
+      md5: 364a22d06963c8fb485582e26dfd6a29.dir
+      size: 2679
       nfiles: 3
     - path: outputs_smoke/model
       hash: md5
-      md5: db096c87038038fc6c73c0d01dad0a3b.dir
-      size: 608818975
+      md5: a5143a7cefcee75ad7c654c7aba961d6.dir
+      size: 608818500
       nfiles: 12
     - path: src/qwen3vl_demo/config.py
       hash: md5
-      md5: 16f8543e1687864373aa840b10cccb5c
-      size: 9975
+      md5: fab8dead50f25c0df21ecf0e91a99aaa
+      size: 9867
     - path: src/qwen3vl_demo/models.py
       hash: md5
-      md5: c4c9d5648ee27c0c48a56a0dbd17d7ba
-      size: 3775
+      md5: d15b1060859a080f61164e701e9769c8
+      size: 3845
     - path: src/qwen3vl_demo/rerank.py
       hash: md5
-      md5: 1443f37304b6946da9c60154d7b2d328
-      size: 11358
+      md5: 9e60631804d46a8afba83068a4f34332
+      size: 12206
     params:
       configs/smoke.yaml:
         data:
@@ -346,16 +346,16 @@ stages:
     deps:
     - path: src/qwen3vl_demo/config.py
       hash: md5
-      md5: 16f8543e1687864373aa840b10cccb5c
-      size: 9975
+      md5: fab8dead50f25c0df21ecf0e91a99aaa
+      size: 9867
     - path: src/qwen3vl_demo/generate_data.py
       hash: md5
-      md5: d094ac1e88cf85d36bc0d7af515d1d56
-      size: 7283
+      md5: 4e4c4e3af506c85f1f4e63d8594181fb
+      size: 7937
     - path: src/qwen3vl_demo/prompts.py
       hash: md5
-      md5: 93e48b48e7497c9ed5163f0f897ce3dc
-      size: 5868
+      md5: dff34a50c0d6d7a27266c1d36b961f22
+      size: 6180
     params:
       configs/default.yaml:
         data:
@@ -374,7 +374,7 @@ stages:
           model_id: black-forest-labs/FLUX.2-klein-4B
           num_inference_steps: 4
           guidance_scale: 1.0
-          batch_size: 4
+          batch_size: 1
         paths:
           data_dir: data
           output_dir: outputs
@@ -399,34 +399,34 @@ stages:
     outs:
     - path: data/eval
       hash: md5
-      md5: 8fede1d7b3b37967fa375a9013dcca3a.dir
-      size: 19166015
+      md5: 6bc8f947ed9055fde81d948a74ce20c4.dir
+      size: 19188975
       nfiles: 3
     - path: data/train
       hash: md5
-      md5: feb8987565647fbb3b3f8bc5099c4c56.dir
-      size: 74400343
+      md5: 4b14f9ed50d62a16621e08dc2565e170.dir
+      size: 74762743
       nfiles: 3
   eval_base@default:
     cmd: uv run python -m qwen3vl_demo.evaluate --profile default --label base
     deps:
     - path: data/eval
       hash: md5
-      md5: 8fede1d7b3b37967fa375a9013dcca3a.dir
-      size: 19166015
+      md5: 6bc8f947ed9055fde81d948a74ce20c4.dir
+      size: 19188975
       nfiles: 3
     - path: src/qwen3vl_demo/config.py
       hash: md5
-      md5: 16f8543e1687864373aa840b10cccb5c
-      size: 9975
+      md5: fab8dead50f25c0df21ecf0e91a99aaa
+      size: 9867
     - path: src/qwen3vl_demo/evaluate.py
       hash: md5
-      md5: 6bdeb86d8b81755aadc3ea584e5302ab
-      size: 6180
+      md5: 818901e5bad0a4bc81bd0e96158d0e7c
+      size: 6836
     - path: src/qwen3vl_demo/models.py
       hash: md5
-      md5: c4c9d5648ee27c0c48a56a0dbd17d7ba
-      size: 3775
+      md5: d15b1060859a080f61164e701e9769c8
+      size: 3845
     params:
       configs/default.yaml:
         data:
@@ -445,7 +445,7 @@ stages:
           model_id: black-forest-labs/FLUX.2-klein-4B
           num_inference_steps: 4
           guidance_scale: 1.0
-          batch_size: 4
+          batch_size: 1
         paths:
           data_dir: data
           output_dir: outputs
@@ -470,37 +470,37 @@ stages:
     outs:
     - path: outputs/metrics_base.json
       hash: md5
-      md5: 05043aea55eb789ca78b00ea4f605cc2
-      size: 897
+      md5: 6809705ff59fbdcfe88d7f4f002475ca
+      size: 850
   train@default:
     cmd: uv run python -m qwen3vl_demo.train --profile default
     deps:
     - path: data/eval
       hash: md5
-      md5: 8fede1d7b3b37967fa375a9013dcca3a.dir
-      size: 19166015
+      md5: 6bc8f947ed9055fde81d948a74ce20c4.dir
+      size: 19188975
       nfiles: 3
     - path: data/train
       hash: md5
-      md5: feb8987565647fbb3b3f8bc5099c4c56.dir
-      size: 74400343
+      md5: 4b14f9ed50d62a16621e08dc2565e170.dir
+      size: 74762743
       nfiles: 3
     - path: src/qwen3vl_demo/config.py
       hash: md5
-      md5: 16f8543e1687864373aa840b10cccb5c
-      size: 9975
+      md5: fab8dead50f25c0df21ecf0e91a99aaa
+      size: 9867
     - path: src/qwen3vl_demo/evaluate.py
       hash: md5
-      md5: 6bdeb86d8b81755aadc3ea584e5302ab
-      size: 6180
+      md5: 818901e5bad0a4bc81bd0e96158d0e7c
+      size: 6836
     - path: src/qwen3vl_demo/models.py
       hash: md5
-      md5: c4c9d5648ee27c0c48a56a0dbd17d7ba
-      size: 3775
+      md5: d15b1060859a080f61164e701e9769c8
+      size: 3845
     - path: src/qwen3vl_demo/train.py
       hash: md5
-      md5: 6361b2025bb7f5fa22901e5c226631ba
-      size: 4820
+      md5: 99b09f1e82fb946ba1176de3da6eb616
+      size: 5328
     params:
       configs/default.yaml:
         data:
@@ -519,7 +519,7 @@ stages:
           model_id: black-forest-labs/FLUX.2-klein-4B
           num_inference_steps: 4
           guidance_scale: 1.0
-          batch_size: 4
+          batch_size: 1
         paths:
           data_dir: data
           output_dir: outputs
@@ -544,34 +544,34 @@ stages:
     outs:
     - path: outputs/model
       hash: md5
-      md5: 4d3fe7597ebf788c885c814b6bf14393.dir
-      size: 4266733334
+      md5: ae0c32ceefcb61417012fcf7f625166f.dir
+      size: 4266738862
       nfiles: 14
   eval@default:
     cmd: uv run python -m qwen3vl_demo.evaluate --profile default --finetuned
     deps:
     - path: data/eval
       hash: md5
-      md5: 8fede1d7b3b37967fa375a9013dcca3a.dir
-      size: 19166015
+      md5: 6bc8f947ed9055fde81d948a74ce20c4.dir
+      size: 19188975
       nfiles: 3
     - path: outputs/model
       hash: md5
-      md5: 4d3fe7597ebf788c885c814b6bf14393.dir
-      size: 4266733334
+      md5: ae0c32ceefcb61417012fcf7f625166f.dir
+      size: 4266738862
       nfiles: 14
     - path: src/qwen3vl_demo/config.py
       hash: md5
-      md5: 16f8543e1687864373aa840b10cccb5c
-      size: 9975
+      md5: fab8dead50f25c0df21ecf0e91a99aaa
+      size: 9867
     - path: src/qwen3vl_demo/evaluate.py
       hash: md5
-      md5: 6bdeb86d8b81755aadc3ea584e5302ab
-      size: 6180
+      md5: 818901e5bad0a4bc81bd0e96158d0e7c
+      size: 6836
     - path: src/qwen3vl_demo/models.py
       hash: md5
-      md5: c4c9d5648ee27c0c48a56a0dbd17d7ba
-      size: 3775
+      md5: d15b1060859a080f61164e701e9769c8
+      size: 3845
     params:
       configs/default.yaml:
         data:
@@ -590,7 +590,7 @@ stages:
           model_id: black-forest-labs/FLUX.2-klein-4B
           num_inference_steps: 4
           guidance_scale: 1.0
-          batch_size: 4
+          batch_size: 1
         paths:
           data_dir: data
           output_dir: outputs
@@ -615,38 +615,38 @@ stages:
     outs:
     - path: outputs/metrics_finetuned.json
       hash: md5
-      md5: 1f248db256b0800e35ff188af0a793f4
-      size: 897
+      md5: 6809705ff59fbdcfe88d7f4f002475ca
+      size: 850
   rerank_default:
     cmd: uv run python -m qwen3vl_demo.rerank --profile default
     deps:
     - path: data/eval
       hash: md5
-      md5: 8fede1d7b3b37967fa375a9013dcca3a.dir
-      size: 19166015
+      md5: 6bc8f947ed9055fde81d948a74ce20c4.dir
+      size: 19188975
       nfiles: 3
     - path: outputs/model
       hash: md5
-      md5: 4d3fe7597ebf788c885c814b6bf14393.dir
-      size: 4266733334
+      md5: ae0c32ceefcb61417012fcf7f625166f.dir
+      size: 4266738862
       nfiles: 14
     - path: outputs/reranker
       hash: md5
-      md5: 43ab22d2a4204fa4f0fca886fde70cfe.dir
-      size: 4266848946
+      md5: 9b06314e6b39e2d1270ed886f20e9df6.dir
+      size: 4266800702
       nfiles: 18
     - path: src/qwen3vl_demo/config.py
       hash: md5
-      md5: 16f8543e1687864373aa840b10cccb5c
-      size: 9975
+      md5: fab8dead50f25c0df21ecf0e91a99aaa
+      size: 9867
     - path: src/qwen3vl_demo/models.py
       hash: md5
-      md5: c4c9d5648ee27c0c48a56a0dbd17d7ba
-      size: 3775
+      md5: d15b1060859a080f61164e701e9769c8
+      size: 3845
     - path: src/qwen3vl_demo/rerank.py
       hash: md5
-      md5: 1443f37304b6946da9c60154d7b2d328
-      size: 11358
+      md5: 9e60631804d46a8afba83068a4f34332
+      size: 12206
     params:
       configs/default.yaml:
         data:
@@ -665,7 +665,7 @@ stages:
           model_id: black-forest-labs/FLUX.2-klein-4B
           num_inference_steps: 4
           guidance_scale: 1.0
-          batch_size: 4
+          batch_size: 1
         paths:
           data_dir: data
           output_dir: outputs
@@ -690,28 +690,28 @@ stages:
     outs:
     - path: outputs/rerank_examples.json
       hash: md5
-      md5: e55b9d9ccf261fe91b2be3f467f56d27
-      size: 1025
+      md5: d747d385721b2d0fe13e3861a0f53507
+      size: 847
     - path: outputs/rerank_metrics.json
       hash: md5
-      md5: d79db1479300a1d4a7b48995185804c6
-      size: 1248
+      md5: 257f778e0468230fc82f2753f5cb3f78
+      size: 1168
   train_reranker:
     cmd: uv run python -m qwen3vl_demo.train_reranker --profile default
     deps:
     - path: data/train
       hash: md5
-      md5: feb8987565647fbb3b3f8bc5099c4c56.dir
-      size: 74400343
+      md5: 4b14f9ed50d62a16621e08dc2565e170.dir
+      size: 74762743
       nfiles: 3
     - path: src/qwen3vl_demo/config.py
       hash: md5
-      md5: 16f8543e1687864373aa840b10cccb5c
-      size: 9975
+      md5: fab8dead50f25c0df21ecf0e91a99aaa
+      size: 9867
     - path: src/qwen3vl_demo/train_reranker.py
       hash: md5
-      md5: ba46c79b471e6e19cd5a929eb951dd09
-      size: 6756
+      md5: 5bbedceeba7d7417ceb0b3ec23fb1776
+      size: 10794
     params:
       configs/default.yaml:
         data:
@@ -730,7 +730,7 @@ stages:
           model_id: black-forest-labs/FLUX.2-klein-4B
           num_inference_steps: 4
           guidance_scale: 1.0
-          batch_size: 4
+          batch_size: 1
         paths:
           data_dir: data
           output_dir: outputs
@@ -755,6 +755,6 @@ stages:
     outs:
     - path: outputs/reranker
       hash: md5
-      md5: 43ab22d2a4204fa4f0fca886fde70cfe.dir
-      size: 4266848946
+      md5: 9b06314e6b39e2d1270ed886f20e9df6.dir
+      size: 4266800702
       nfiles: 18
