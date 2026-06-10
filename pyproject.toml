@@ -80,6 +80,10 @@ build-backend = "hatchling.build"
 torch = [{ index = "pytorch-cu126", marker = "sys_platform == 'linux'" }]
 torchvision = [{ index = "pytorch-cu126", marker = "sys_platform == 'linux'" }]
 
+[tool.uv.extra-build-dependencies]
+# flash-attn の setup.py がビルド時に torch を必要とするため明示する。
+flash-attn = ["torch"]
+
 [[tool.uv.index]]
 name = "pytorch-cu126"
 url = "https://download.pytorch.org/whl/cu126"
