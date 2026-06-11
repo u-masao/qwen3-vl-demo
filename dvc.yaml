@@ -90,21 +90,25 @@ stages:
 
   # ── リランカーのファインチューニング ────────────────────────────────────────
   # default のみ実行（smoke は reranker.model_id=null のため学習をスキップ＝出力なし）。
+  # Hard Negative Mining で FT 済み埋め込みモデル（outputs/model）を使うため deps に含める。
   train_reranker:
     cmd: uv run python -m qwen3vl_demo.train_reranker --profile default
     params:
       - configs/default.yaml:
     deps:
       - src/qwen3vl_demo/config.py
+      - src/qwen3vl_demo/models.py
       - src/qwen3vl_demo/train_reranker.py
       - data/train
+      - outputs/model
     outs:
       - outputs/reranker
 
-  # ── 4 パターン評価（埋め込み{base,ft} × リランカー{base,ft}）＋リランク事例 ──
+  # ── 6 パターン評価（埋め込み{base,ft} × リランカー{base,ft,none}）＋リランク事例 ──
   # base 埋め込み/リランカーは HF からダウンロード、ft はそれぞれの学習成果物を使う。
+  # --num-queries 7: ペルソナが 7 種類なので全ペルソナ分の事例を出力する。
   rerank_default:
-    cmd: uv run python -m qwen3vl_demo.rerank --profile default
+    cmd: uv run python -m qwen3vl_demo.rerank --profile default --num-queries 7
     params:
       - configs/default.yaml:
     deps:

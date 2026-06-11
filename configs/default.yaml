@@ -12,11 +12,11 @@ paths:
   model_dir: outputs/model        # where the fine-tuned embedding model is saved
 
 data:
-  num_train: 200
-  num_eval: 50
+  num_train: 500
+  num_eval: 200
   image_size: 512
   # If true, images sharing the query's category also count as relevant during
-  # evaluation (looser). Default false = strict 1:1 caption<->image relevance.
+  # evaluation (looser). Unused when persona-based evaluation is active.
   relevant_same_category: false
 
 image_gen:

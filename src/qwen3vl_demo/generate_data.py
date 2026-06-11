@@ -117,6 +117,7 @@ def _build_split(samples: list[Sample], images: list[Image.Image]) -> Dataset:
             "positive": HFImage(),
             "category": Value("string"),
             "subject": Value("string"),
+            "persona": Value("string"),
         }
     )
     data = {
@@ -124,6 +125,7 @@ def _build_split(samples: list[Sample], images: list[Image.Image]) -> Dataset:
         "positive": images,
         "category": [s.category for s in samples],
         "subject": [s.subject for s in samples],
+        "persona": [s.persona for s in samples],
     }
     return Dataset.from_dict(data, features=features)
 

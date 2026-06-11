@@ -173,8 +173,8 @@ def mine_hard_negatives(
 def _build_reranker_dataset(cfg: Config) -> Dataset:
     """train スプリットからリランカー学習用の (query, answer, label) データセットを作る。"""
     train_ds = load_from_disk(str(cfg.data_path / "train"))
-    # subject 単語（"cat" など）をクエリとして使う（visual classification タスク）。
-    anchors = [row["subject"] for row in train_ds]
+    # ペルソナ名をクエリとして使う（嗜好ベース検索タスク）。
+    anchors = [row["persona"] for row in train_ds]
     images = [row["positive"] for row in train_ds]
 
     pairs = mine_hard_negatives(cfg, anchors, images, cfg.reranker.num_negatives, seed=cfg.seed)

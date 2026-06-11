@@ -52,30 +52,26 @@ def _free(model) -> None:
         pass
 
 
-def _build_relevant(
-    eval_ds, relevant_same_category: bool, use_subject: bool = False
-) -> list[set[int]]:
+def _build_relevant(eval_ds, relevant_same_category: bool) -> list[set[int]]:
     """各クエリ i に対する正解文書インデックス集合を作る（純粋関数）。
 
-    ``use_subject=True`` のとき: 同一主語（"cat" など）の全文書を正解とする（visual
-    classification タスク）。``False`` のときは厳密 1 対 1 で、``relevant_same_category``
-    が真なら同一カテゴリも正解に追加する（後方互換モード）。
+    同一ペルソナの全文書を正解とする（マルチポジティブ検索タスク）。
+    ``relevant_same_category`` が真なら同一カテゴリも正解に追加する。
     """
-    if use_subject:
-        subject_to_idx: dict[str, set[int]] = {}
-        for i, row in enumerate(eval_ds):
-            subject_to_idx.setdefault(row["subject"], set()).add(i)
-        return [set(subject_to_idx[row["subject"]]) for row in eval_ds]
+    persona_to_idx: dict[str, set[int]] = {}
+    for i, row in enumerate(eval_ds):
+        persona_to_idx.setdefault(row["persona"], set()).add(i)
 
-    n = len(eval_ds)
-    relevant: list[set[int]] = [{i} for i in range(n)]
+    relevant: list[set[int]] = [set(persona_to_idx[row["persona"]]) for row in eval_ds]
+
     if relevant_same_category:
         categories = [row["category"] for row in eval_ds]
         by_cat: dict[str, set[int]] = {}
         for i, c in enumerate(categories):
             by_cat.setdefault(c, set()).add(i)
-        for i in range(n):
+        for i in range(len(eval_ds)):
             relevant[i] |= by_cat[categories[i]]
+
     return relevant
 
 
@@ -185,9 +181,9 @@ def run_rerank(cfg: Config, num_queries: int = 5) -> None:
 
     eval_ds = load_from_disk(str(cfg.data_path / "eval"))
     corpus_images = [row["positive"] for row in eval_ds]
-    # subject 単語（"cat" など）をクエリとして使う（visual classification タスク）。
-    queries = [row["subject"] for row in eval_ds]
-    relevant = _build_relevant(eval_ds, cfg.data.relevant_same_category, use_subject=True)
+    # ペルソナ名をクエリとして使う（嗜好ベース検索タスク）。
+    queries = [row["persona"] for row in eval_ds]
+    relevant = _build_relevant(eval_ds, cfg.data.relevant_same_category)
 
     top_k = min(cfg.reranker.top_k, len(corpus_images))
     ks = sorted({1, min(5, top_k), top_k})
@@ -241,25 +237,41 @@ def run_rerank(cfg: Config, num_queries: int = 5) -> None:
         )
     logger.info("  メトリクス -> %s", metrics_file)
 
-    # --- 事例: 最良の組（ft があれば ft）でリランク前後の順位を数件保存 ---
+    # --- 事例: 最良の組（ft があれば ft）でリランク前後を数件保存 ---
+    # rank 変動が面白い（リランク前に正解が top-k 圏外 or 順位が変わった）クエリを優先表示。
     best_emb = "ft" if "ft" in emb_variants else "base"
     best_rr = "ft" if "ft" in rr_variants else "base"
     examples = []
-    n = min(num_queries, len(eval_ds))
-    for qi in range(n):
+    seen_queries: set[str] = set()
+    for qi, row in enumerate(eval_ds):
+        query = queries[qi]
+        if query in seen_queries:
+            continue  # 同一ペルソナクエリは代表 1 件だけ表示
+        seen_queries.add(query)
+        rel = relevant[qi]
         before = candidates[best_emb][qi]
         after = reranked_by_rr[best_rr][best_emb][qi]
+        # 正解集合の中で最も上位に来た文書の順位を「代表順位」とする。
+        best_before = min((pos for pos, d in enumerate(before, 1) if d in rel), default=None)
+        best_after = min((pos for pos, d in enumerate(after, 1) if d in rel), default=None)
+        # top-k 内に正解が何件含まれるか。
+        hits_before = sum(1 for d in before if d in rel)
+        hits_after = sum(1 for d in after if d in rel)
         examples.append(
             {
-                "query": queries[qi],
-                "target": qi,
+                "query": query,
+                "num_relevant": len(rel),
                 "embedding": best_emb,
                 "reranker": best_rr,
-                "rank_before_rerank": _rank_of(qi, before),
-                "rank_after_rerank": _rank_of(qi, after),
                 "top_k": top_k,
+                "best_rank_before_rerank": best_before,
+                "best_rank_after_rerank": best_after,
+                "hits_in_topk_before": hits_before,
+                "hits_in_topk_after": hits_after,
             }
         )
+        if len(examples) >= num_queries:
+            break
     examples_file = cfg.output_path / "rerank_examples.json"
     with open(examples_file, "w", encoding="utf-8") as fh:
         json.dump(examples, fh, indent=2)

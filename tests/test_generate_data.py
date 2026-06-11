@@ -33,7 +33,7 @@ def test_build_split_columns_and_length():
     images = [_stub_image(s.text, 16) for s in samples]
     ds = _build_split(samples, images)
     assert len(ds) == 5
-    assert set(ds.column_names) == {"anchor", "positive", "category", "subject"}
+    assert set(ds.column_names) == {"anchor", "positive", "category", "subject", "persona"}
     row = ds[0]
     assert isinstance(row["anchor"], str)
     assert row["category"] in {s.category for s in samples}

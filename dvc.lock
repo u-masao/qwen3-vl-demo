@@ -9,12 +9,12 @@ stages:
       size: 9867
     - path: src/qwen3vl_demo/generate_data.py
       hash: md5
-      md5: 4e4c4e3af506c85f1f4e63d8594181fb
-      size: 7937
+      md5: 99470ce9b71507cba68b5219cda1efeb
+      size: 8026
     - path: src/qwen3vl_demo/prompts.py
       hash: md5
-      md5: dff34a50c0d6d7a27266c1d36b961f22
-      size: 6180
+      md5: 5615fd11b4667fa5de04b489d66db4c6
+      size: 7516
     params:
       configs/smoke.yaml:
         data:
@@ -58,21 +58,21 @@ stages:
     outs:
     - path: data_smoke/eval
       hash: md5
-      md5: 364a22d06963c8fb485582e26dfd6a29.dir
-      size: 2679
+      md5: 19a4b5b4a6c4ce9f6a262ae2814b3cab.dir
+      size: 2975
       nfiles: 3
     - path: data_smoke/train
       hash: md5
-      md5: 0f63ec6c3e49cf4b23f6dbe0b03f0691.dir
-      size: 3607
+      md5: 366304feca934746690d6dc1d4b56ca1.dir
+      size: 3967
       nfiles: 3
   eval_base@smoke:
     cmd: uv run python -m qwen3vl_demo.evaluate --profile smoke --label base
     deps:
     - path: data_smoke/eval
       hash: md5
-      md5: 364a22d06963c8fb485582e26dfd6a29.dir
-      size: 2679
+      md5: 19a4b5b4a6c4ce9f6a262ae2814b3cab.dir
+      size: 2975
       nfiles: 3
     - path: src/qwen3vl_demo/config.py
       hash: md5
@@ -80,12 +80,12 @@ stages:
       size: 9867
     - path: src/qwen3vl_demo/evaluate.py
       hash: md5
-      md5: 818901e5bad0a4bc81bd0e96158d0e7c
-      size: 6836
+      md5: 0f852f775a4d942c0997032b65d7d538
+      size: 6056
     - path: src/qwen3vl_demo/models.py
       hash: md5
-      md5: d15b1060859a080f61164e701e9769c8
-      size: 3845
+      md5: 864163e85560b211b5dd9621c622e030
+      size: 4055
     params:
       configs/smoke.yaml:
         data:
@@ -129,20 +129,20 @@ stages:
     outs:
     - path: outputs_smoke/metrics_base.json
       hash: md5
-      md5: dfeb57fa1950d3f3e0f40b7ae412cb88
-      size: 865
+      md5: 15372f1f413c4f4fedb36ce3dcc2cfdd
+      size: 854
   train@smoke:
     cmd: uv run python -m qwen3vl_demo.train --profile smoke
     deps:
     - path: data_smoke/eval
       hash: md5
-      md5: 364a22d06963c8fb485582e26dfd6a29.dir
-      size: 2679
+      md5: 19a4b5b4a6c4ce9f6a262ae2814b3cab.dir
+      size: 2975
       nfiles: 3
     - path: data_smoke/train
       hash: md5
-      md5: 0f63ec6c3e49cf4b23f6dbe0b03f0691.dir
-      size: 3607
+      md5: 366304feca934746690d6dc1d4b56ca1.dir
+      size: 3967
       nfiles: 3
     - path: src/qwen3vl_demo/config.py
       hash: md5
@@ -150,16 +150,16 @@ stages:
       size: 9867
     - path: src/qwen3vl_demo/evaluate.py
       hash: md5
-      md5: 818901e5bad0a4bc81bd0e96158d0e7c
-      size: 6836
+      md5: 0f852f775a4d942c0997032b65d7d538
+      size: 6056
     - path: src/qwen3vl_demo/models.py
       hash: md5
-      md5: d15b1060859a080f61164e701e9769c8
-      size: 3845
+      md5: 864163e85560b211b5dd9621c622e030
+      size: 4055
     - path: src/qwen3vl_demo/train.py
       hash: md5
-      md5: 99b09f1e82fb946ba1176de3da6eb616
-      size: 5328
+      md5: 5875f0c6b55287686aad25f71e7e72ef
+      size: 5332
     params:
       configs/smoke.yaml:
         data:
@@ -203,21 +203,21 @@ stages:
     outs:
     - path: outputs_smoke/model
       hash: md5
-      md5: a5143a7cefcee75ad7c654c7aba961d6.dir
-      size: 608818500
+      md5: 9afb155d1814fbf96ab2b500b13091aa.dir
+      size: 608818480
       nfiles: 12
   eval@smoke:
     cmd: uv run python -m qwen3vl_demo.evaluate --profile smoke --finetuned
     deps:
     - path: data_smoke/eval
       hash: md5
-      md5: 364a22d06963c8fb485582e26dfd6a29.dir
-      size: 2679
+      md5: 19a4b5b4a6c4ce9f6a262ae2814b3cab.dir
+      size: 2975
       nfiles: 3
     - path: outputs_smoke/model
       hash: md5
-      md5: a5143a7cefcee75ad7c654c7aba961d6.dir
-      size: 608818500
+      md5: 9afb155d1814fbf96ab2b500b13091aa.dir
+      size: 608818480
       nfiles: 12
     - path: src/qwen3vl_demo/config.py
       hash: md5
@@ -225,12 +225,12 @@ stages:
       size: 9867
     - path: src/qwen3vl_demo/evaluate.py
       hash: md5
-      md5: 818901e5bad0a4bc81bd0e96158d0e7c
-      size: 6836
+      md5: 0f852f775a4d942c0997032b65d7d538
+      size: 6056
     - path: src/qwen3vl_demo/models.py
       hash: md5
-      md5: d15b1060859a080f61164e701e9769c8
-      size: 3845
+      md5: 864163e85560b211b5dd9621c622e030
+      size: 4055
     params:
       configs/smoke.yaml:
         data:
@@ -274,20 +274,20 @@ stages:
     outs:
     - path: outputs_smoke/metrics_finetuned.json
       hash: md5
-      md5: 3816a50befbc23e90e932a0f19a791b8
-      size: 863
+      md5: 5b9f5eed9363231d9b397bc2b6b24a9b
+      size: 852
   rerank_smoke:
     cmd: uv run python -m qwen3vl_demo.rerank --profile smoke
     deps:
     - path: data_smoke/eval
       hash: md5
-      md5: 364a22d06963c8fb485582e26dfd6a29.dir
-      size: 2679
+      md5: 19a4b5b4a6c4ce9f6a262ae2814b3cab.dir
+      size: 2975
       nfiles: 3
     - path: outputs_smoke/model
       hash: md5
-      md5: a5143a7cefcee75ad7c654c7aba961d6.dir
-      size: 608818500
+      md5: 9afb155d1814fbf96ab2b500b13091aa.dir
+      size: 608818480
       nfiles: 12
     - path: src/qwen3vl_demo/config.py
       hash: md5
@@ -295,12 +295,12 @@ stages:
       size: 9867
     - path: src/qwen3vl_demo/models.py
       hash: md5
-      md5: d15b1060859a080f61164e701e9769c8
-      size: 3845
+      md5: 864163e85560b211b5dd9621c622e030
+      size: 4055
     - path: src/qwen3vl_demo/rerank.py
       hash: md5
-      md5: 9e60631804d46a8afba83068a4f34332
-      size: 12206
+      md5: d0f02eeebdb2c9059be055d7588c92de
+      size: 12893
     params:
       configs/smoke.yaml:
         data:
@@ -350,17 +350,17 @@ stages:
       size: 9867
     - path: src/qwen3vl_demo/generate_data.py
       hash: md5
-      md5: 4e4c4e3af506c85f1f4e63d8594181fb
-      size: 7937
+      md5: 99470ce9b71507cba68b5219cda1efeb
+      size: 8026
     - path: src/qwen3vl_demo/prompts.py
       hash: md5
-      md5: dff34a50c0d6d7a27266c1d36b961f22
-      size: 6180
+      md5: 5615fd11b4667fa5de04b489d66db4c6
+      size: 7516
     params:
       configs/default.yaml:
         data:
-          num_train: 200
-          num_eval: 50
+          num_train: 500
+          num_eval: 200
           image_size: 512
           relevant_same_category: false
         device: cuda
@@ -399,21 +399,21 @@ stages:
     outs:
     - path: data/eval
       hash: md5
-      md5: 6bc8f947ed9055fde81d948a74ce20c4.dir
-      size: 19188975
+      md5: 1c3ce22a652135ce52db95bbf22e5705.dir
+      size: 77987455
       nfiles: 3
     - path: data/train
       hash: md5
-      md5: 4b14f9ed50d62a16621e08dc2565e170.dir
-      size: 74762743
+      md5: 6ea42247712afd90e048efad265fb879.dir
+      size: 187973719
       nfiles: 3
   eval_base@default:
     cmd: uv run python -m qwen3vl_demo.evaluate --profile default --label base
     deps:
     - path: data/eval
       hash: md5
-      md5: 6bc8f947ed9055fde81d948a74ce20c4.dir
-      size: 19188975
+      md5: 1c3ce22a652135ce52db95bbf22e5705.dir
+      size: 77987455
       nfiles: 3
     - path: src/qwen3vl_demo/config.py
       hash: md5
@@ -421,17 +421,17 @@ stages:
       size: 9867
     - path: src/qwen3vl_demo/evaluate.py
       hash: md5
-      md5: 818901e5bad0a4bc81bd0e96158d0e7c
-      size: 6836
+      md5: 0f852f775a4d942c0997032b65d7d538
+      size: 6056
     - path: src/qwen3vl_demo/models.py
       hash: md5
-      md5: d15b1060859a080f61164e701e9769c8
-      size: 3845
+      md5: 864163e85560b211b5dd9621c622e030
+      size: 4055
     params:
       configs/default.yaml:
         data:
-          num_train: 200
-          num_eval: 50
+          num_train: 500
+          num_eval: 200
           image_size: 512
           relevant_same_category: false
         device: cuda
@@ -470,20 +470,20 @@ stages:
     outs:
     - path: outputs/metrics_base.json
       hash: md5
-      md5: 6809705ff59fbdcfe88d7f4f002475ca
-      size: 850
+      md5: 498063561b283f85418d6f440216e6e5
+      size: 880
   train@default:
     cmd: uv run python -m qwen3vl_demo.train --profile default
     deps:
     - path: data/eval
       hash: md5
-      md5: 6bc8f947ed9055fde81d948a74ce20c4.dir
-      size: 19188975
+      md5: 1c3ce22a652135ce52db95bbf22e5705.dir
+      size: 77987455
       nfiles: 3
     - path: data/train
       hash: md5
-      md5: 4b14f9ed50d62a16621e08dc2565e170.dir
-      size: 74762743
+      md5: 6ea42247712afd90e048efad265fb879.dir
+      size: 187973719
       nfiles: 3
     - path: src/qwen3vl_demo/config.py
       hash: md5
@@ -491,21 +491,21 @@ stages:
       size: 9867
     - path: src/qwen3vl_demo/evaluate.py
       hash: md5
-      md5: 818901e5bad0a4bc81bd0e96158d0e7c
-      size: 6836
+      md5: 0f852f775a4d942c0997032b65d7d538
+      size: 6056
     - path: src/qwen3vl_demo/models.py
       hash: md5
-      md5: d15b1060859a080f61164e701e9769c8
-      size: 3845
+      md5: 864163e85560b211b5dd9621c622e030
+      size: 4055
     - path: src/qwen3vl_demo/train.py
       hash: md5
-      md5: 99b09f1e82fb946ba1176de3da6eb616
-      size: 5328
+      md5: 5875f0c6b55287686aad25f71e7e72ef
+      size: 5332
     params:
       configs/default.yaml:
         data:
-          num_train: 200
-          num_eval: 50
+          num_train: 500
+          num_eval: 200
           image_size: 512
           relevant_same_category: false
         device: cuda
@@ -544,21 +544,21 @@ stages:
     outs:
     - path: outputs/model
       hash: md5
-      md5: ae0c32ceefcb61417012fcf7f625166f.dir
-      size: 4266738862
+      md5: 9356959a4e5572f52c01e20bda9cc9bc.dir
+      size: 4266739548
       nfiles: 14
   eval@default:
     cmd: uv run python -m qwen3vl_demo.evaluate --profile default --finetuned
     deps:
     - path: data/eval
       hash: md5
-      md5: 6bc8f947ed9055fde81d948a74ce20c4.dir
-      size: 19188975
+      md5: 1c3ce22a652135ce52db95bbf22e5705.dir
+      size: 77987455
       nfiles: 3
     - path: outputs/model
       hash: md5
-      md5: ae0c32ceefcb61417012fcf7f625166f.dir
-      size: 4266738862
+      md5: 9356959a4e5572f52c01e20bda9cc9bc.dir
+      size: 4266739548
       nfiles: 14
     - path: src/qwen3vl_demo/config.py
       hash: md5
@@ -566,17 +566,17 @@ stages:
       size: 9867
     - path: src/qwen3vl_demo/evaluate.py
       hash: md5
-      md5: 818901e5bad0a4bc81bd0e96158d0e7c
-      size: 6836
+      md5: 0f852f775a4d942c0997032b65d7d538
+      size: 6056
     - path: src/qwen3vl_demo/models.py
       hash: md5
-      md5: d15b1060859a080f61164e701e9769c8
-      size: 3845
+      md5: 864163e85560b211b5dd9621c622e030
+      size: 4055
     params:
       configs/default.yaml:
         data:
-          num_train: 200
-          num_eval: 50
+          num_train: 500
+          num_eval: 200
           image_size: 512
           relevant_same_category: false
         device: cuda
@@ -615,25 +615,25 @@ stages:
     outs:
     - path: outputs/metrics_finetuned.json
       hash: md5
-      md5: 6809705ff59fbdcfe88d7f4f002475ca
-      size: 850
+      md5: 514d9342ba7316aebced546b661efc2d
+      size: 843
   rerank_default:
-    cmd: uv run python -m qwen3vl_demo.rerank --profile default
+    cmd: uv run python -m qwen3vl_demo.rerank --profile default --num-queries 7
     deps:
     - path: data/eval
       hash: md5
-      md5: 6bc8f947ed9055fde81d948a74ce20c4.dir
-      size: 19188975
+      md5: 1c3ce22a652135ce52db95bbf22e5705.dir
+      size: 77987455
       nfiles: 3
     - path: outputs/model
       hash: md5
-      md5: ae0c32ceefcb61417012fcf7f625166f.dir
-      size: 4266738862
+      md5: 9356959a4e5572f52c01e20bda9cc9bc.dir
+      size: 4266739548
       nfiles: 14
     - path: outputs/reranker
       hash: md5
-      md5: 9b06314e6b39e2d1270ed886f20e9df6.dir
-      size: 4266800702
+      md5: 056111dc8ee209a7e5f113f40b96c33f.dir
+      size: 4266827916
       nfiles: 18
     - path: src/qwen3vl_demo/config.py
       hash: md5
@@ -641,17 +641,17 @@ stages:
       size: 9867
     - path: src/qwen3vl_demo/models.py
       hash: md5
-      md5: d15b1060859a080f61164e701e9769c8
-      size: 3845
+      md5: 864163e85560b211b5dd9621c622e030
+      size: 4055
     - path: src/qwen3vl_demo/rerank.py
       hash: md5
-      md5: 9e60631804d46a8afba83068a4f34332
-      size: 12206
+      md5: d0f02eeebdb2c9059be055d7588c92de
+      size: 12893
     params:
       configs/default.yaml:
         data:
-          num_train: 200
-          num_eval: 50
+          num_train: 500
+          num_eval: 200
           image_size: 512
           relevant_same_category: false
         device: cuda
@@ -690,33 +690,42 @@ stages:
     outs:
     - path: outputs/rerank_examples.json
       hash: md5
-      md5: d747d385721b2d0fe13e3861a0f53507
-      size: 847
+      md5: 0448d2b3461473e0eda7cd0a9567eb9c
+      size: 1741
     - path: outputs/rerank_metrics.json
       hash: md5
-      md5: 257f778e0468230fc82f2753f5cb3f78
-      size: 1168
+      md5: 1c2bba89f6aab353c970fdf06a94faa3
+      size: 1539
   train_reranker:
     cmd: uv run python -m qwen3vl_demo.train_reranker --profile default
     deps:
     - path: data/train
       hash: md5
-      md5: 4b14f9ed50d62a16621e08dc2565e170.dir
-      size: 74762743
+      md5: 6ea42247712afd90e048efad265fb879.dir
+      size: 187973719
       nfiles: 3
+    - path: outputs/model
+      hash: md5
+      md5: 9356959a4e5572f52c01e20bda9cc9bc.dir
+      size: 4266739548
+      nfiles: 14
     - path: src/qwen3vl_demo/config.py
       hash: md5
       md5: fab8dead50f25c0df21ecf0e91a99aaa
       size: 9867
+    - path: src/qwen3vl_demo/models.py
+      hash: md5
+      md5: 864163e85560b211b5dd9621c622e030
+      size: 4055
     - path: src/qwen3vl_demo/train_reranker.py
       hash: md5
-      md5: 5bbedceeba7d7417ceb0b3ec23fb1776
-      size: 10794
+      md5: 258c14ddfded6cc5af4ca101a9357971
+      size: 10776
     params:
       configs/default.yaml:
         data:
-          num_train: 200
-          num_eval: 50
+          num_train: 500
+          num_eval: 200
           image_size: 512
           relevant_same_category: false
         device: cuda
@@ -755,6 +764,6 @@ stages:
     outs:
     - path: outputs/reranker
       hash: md5
-      md5: 9b06314e6b39e2d1270ed886f20e9df6.dir
-      size: 4266800702
+      md5: 056111dc8ee209a7e5f113f40b96c33f.dir
+      size: 4266827916
       nfiles: 18

@@ -49,6 +49,26 @@ SUBJECTS: dict[str, list[str]] = {
     ],
 }
 
+# ペルソナ嗜好マップ: 各ユーザーが「好む」被写体リスト。
+# カテゴリをまたいで非直感的に割り当てることで、視覚・テキストからは推測できない
+# 難しい検索タスクを作る。全 35 subjects を重複なく 7 ペルソナに配分。
+PERSONA_MAP: dict[str, list[str]] = {
+    "user_alpha":   ["cat", "pizza", "motorcycle", "lighthouse", "old typewriter"],
+    "user_beta":    ["dog", "burger", "bicycle", "city street", "guitar"],
+    "user_gamma":   ["rabbit", "sushi roll", "train", "forest path", "lantern"],
+    "user_delta":   ["horse", "coffee cup", "sailboat", "mountain", "ceramic teapot"],
+    "user_epsilon": ["owl", "cupcake", "scooter", "beach", "wooden chair"],
+    "user_zeta":    ["fox", "salad", "airplane", "desert dune", "leather backpack"],
+    "user_eta":     ["panda", "parrot", "bowl of ramen", "car", "waterfall"],
+}
+
+# 逆引き: 被写体 → ペルソナ名
+SUBJECT_TO_PERSONA: dict[str, str] = {
+    subj: persona
+    for persona, subjects in PERSONA_MAP.items()
+    for subj in subjects
+}
+
 # 形容詞（見た目の修飾）。多様性を稼ぐための語彙。
 ADJECTIVES: list[str] = [
     "fluffy",
@@ -91,17 +111,20 @@ TEMPLATES: list[str] = [
 
 @dataclass(frozen=True)
 class Sample:
-    """生成された 1 件のキャプションと、その被写体カテゴリ・主語。
+    """生成された 1 件のキャプションと、その被写体カテゴリ・主語・ペルソナ。
 
     Attributes:
-        text: キャプション本文（画像生成プロンプト兼・検索クエリ）。
+        text: キャプション本文（画像生成プロンプト兼・学習アンカー）。
         category: 被写体カテゴリ（"animal" など）。緩い評価の正解判定に使う。
-        subject: 被写体単語（"cat" など）。視覚分類タスク用の短縮クエリとして使う。
+        subject: 被写体単語（"cat" など）。
+        persona: このサンプルが属するユーザーペルソナ（"user_alpha" など）。
+                 視覚・テキストからは推測できない嗜好ベースの検索クエリとして使う。
     """
 
     text: str
     category: str
     subject: str
+    persona: str
 
 
 def build_captions(n: int, seed: int, max_attempts: int | None = None) -> list[Sample]:
@@ -145,7 +168,8 @@ def build_captions(n: int, seed: int, max_attempts: int | None = None) -> list[S
         if text in seen:
             continue  # 既出の文はスキップ（一意性を保つ）
         seen.add(text)
-        samples.append(Sample(text=text, category=category, subject=subj))
+        persona = SUBJECT_TO_PERSONA[subj]
+        samples.append(Sample(text=text, category=category, subject=subj, persona=persona))
 
     if len(samples) < n:
         raise ValueError(

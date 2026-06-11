@@ -47,10 +47,10 @@ def train(cfg: Config) -> None:
             logger.warning("  勾配チェックポイントを有効化できませんでした: %s", exc)
 
     train_ds = load_from_disk(str(cfg.data_path / "train"))
-    # subject 単語（"cat" など）をアンカーとして使う（visual classification タスク）。
-    # 古い anchor（全キャプション）を削除してから subject を anchor に昇格させる。
-    train_ds = train_ds.remove_columns(["anchor"])
-    train_ds = train_ds.rename_column("subject", "anchor")
+    # ペルソナ名をアンカーとして使う（嗜好ベース検索タスク）。
+    # persona 列を anchor に昇格させ、MNRL が期待する (anchor, positive) の形式にする。
+    train_ds = train_ds.remove_columns(["anchor", "subject", "category"])
+    train_ds = train_ds.rename_column("persona", "anchor")
     # MNRL が必要とするのは (anchor, positive) の 2 カラムだけ。補助列は落としておく。
     keep = [c for c in ("anchor", "positive") if c in train_ds.column_names]
     train_ds = train_ds.select_columns(keep)
