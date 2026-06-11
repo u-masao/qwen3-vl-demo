@@ -8,7 +8,7 @@
   1. メトリクス比較     – 埋め込みのベース vs FT 後の棒グラフ＋数値表
   2. データセット閲覧    – 生成したキャプション付き画像を 1 枚ずつブラウズ
   3. Reranking デモ     – rerank_examples.json からリランク前後の順位変化を表示
-  4. 2 段階検索 4 パターン – rerank_metrics.json（埋め込み{base,ft}×リランカー{base,ft}）を比較
+  4. 2 段階検索 6 パターン – rerank_metrics.json（埋め込み{base,ft}×リランカー{base,ft,none}）を比較
 
 起動: ``uv run python app.py`` → http://localhost:7860
 """
@@ -246,7 +246,7 @@ def load_rerank_examples(output_dir_label: str) -> list[list]:
 
 
 # ---------------------------------------------------------------------------
-# タブ 4（2 段階検索の 4 パターン評価）用のヘルパ
+# タブ 4（2 段階検索の 6 パターン評価）用のヘルパ
 # ---------------------------------------------------------------------------
 
 # 2 段階パターン（埋め込み+リランカー）の表示順。先頭 4 つが主要 4 パターン、
@@ -278,7 +278,7 @@ def _metric_sort_key(metric: str):
 
 
 def load_rerank_metrics(output_dir_label: str) -> dict:
-    """rerank_metrics.json（4 パターンの検索指標）を読み込む。無ければ空 dict。"""
+    """rerank_metrics.json（6 パターンの検索指標）を読み込む。無ければ空 dict。"""
     path = OUTPUT_DIRS[output_dir_label] / "rerank_metrics.json"
     if not path.exists():
         return {}
@@ -301,7 +301,7 @@ def _ordered_metric_keys(metrics: dict) -> list[str]:
 
 
 def make_rerank_metrics_table(output_dir_label: str) -> tuple[list[str], list[list]]:
-    """4 パターン×全メトリクスの表（ヘッダ, 行）を返す。"""
+    """6 パターン×全メトリクスの表（ヘッダ, 行）を返す。"""
     metrics = load_rerank_metrics(output_dir_label)
     if not metrics:
         return ["パターン"], []
@@ -341,7 +341,7 @@ def make_rerank_metrics_figure(output_dir_label: str):
     ax.set_xticklabels(mkeys, rotation=30, ha="right", fontsize=9)
     ax.set_ylim(0, 1.05)
     ax.set_ylabel("Score")
-    ax.set_title(f"2 段階検索 4 パターン比較 — {output_dir_label}", fontsize=11, fontweight="bold")
+    ax.set_title(f"2 段階検索 主要 4 パターン比較 — {output_dir_label}", fontsize=11, fontweight="bold")
     ax.legend(title="埋め込み+リランカー", fontsize=8)
     ax.grid(axis="y", linestyle="--", alpha=0.4)
     fig.tight_layout()
@@ -475,13 +475,14 @@ def build_app() -> gr.Blocks:
                 demo.load(_load_rerank, inputs=rerank_dir_dd, outputs=rerank_table)
 
             # ----------------------------------------------------------------
-            # タブ 4: 2 段階検索 4 パターン評価
+            # タブ 4: 2 段階検索 6 パターン評価
             # ----------------------------------------------------------------
-            with gr.Tab("🔀 2段階検索 (4パターン)"):
+            with gr.Tab("🔀 2段階検索 (6パターン)"):
                 gr.Markdown(
-                    "埋め込み{base, ft} × リランカー{base, ft} の **4 パターン**で "
+                    "埋め込み{base, ft} × リランカー{base, ft, none} の **6 パターン**で "
                     "2 段階検索（retrieve → rerank）の精度を比較します"
                     "（`rerank_metrics.json`）。`rerank=none` は埋め込み検索のみの参考値です。"
+                    "（グラフは主要 4 パターン、表は 6 パターンすべてを表示します。）"
                 )
                 rr4_dir_dd = gr.Dropdown(
                     choices=output_dir_choices,
@@ -489,7 +490,7 @@ def build_app() -> gr.Blocks:
                     label="出力ディレクトリ",
                     interactive=True,
                 )
-                rr4_plot = gr.Plot(label="4 パターン比較（埋め込み × リランカー）")
+                rr4_plot = gr.Plot(label="主要 4 パターン比較（埋め込み × リランカー）")
                 rr4_table = gr.Dataframe(label="全メトリクス", interactive=False, wrap=True)
 
                 def _refresh_rr4(label):

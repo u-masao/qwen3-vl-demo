@@ -1,5 +1,5 @@
 # Smoke profile: CPU-only wiring check. Runs end-to-end in seconds/minutes
-# WITHOUT downloading the heavy Qwen3-VL / SD-Turbo models.
+# WITHOUT downloading the heavy Qwen3-VL / FLUX.2-klein models.
 #   - image generation is stubbed with synthetic (noise) images
 #   - embedding model is a small CPU-friendly multimodal model (CLIP)
 #   - reranking is skipped (no tiny multimodal cross-encoder exists)

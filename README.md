@@ -4,14 +4,14 @@
 
 A minimal, end-to-end demo that shows how **synthetic data alone can improve image retrieval**.
 
-1. 🎨 **Generate data** — use the text-to-image model [SD-Turbo](https://huggingface.co/stabilityai/sd-turbo) to synthesize a captioned image dataset (each caption *is* the ground-truth query for its image)
+1. 🎨 **Generate data** — use the text-to-image model [FLUX.2-klein-4B](https://huggingface.co/black-forest-labs/FLUX.2-klein-4B) to synthesize a captioned image dataset (each caption *is* the ground-truth query for its image)
 2. 📐 **Baseline eval** — measure text→image retrieval quality (NDCG / Recall@k) of [Qwen3-VL-Embedding-2B](https://huggingface.co/Qwen/Qwen3-VL-Embedding-2B)
 3. 🔧 **Fine-tune** — adapt the embedding model to the synthetic pairs with [Sentence Transformers](https://sbert.net)
 4. 📈 **Re-eval** — compare retrieval quality before vs after fine-tuning
 5. 🥇 **Rerank** — fine-tune [Qwen3-VL-Reranker-2B](https://huggingface.co/Qwen/Qwen3-VL-Reranker-2B) and rerank the top candidates
 
 ```
-caption (text)  ──SD-Turbo──▶  image
+caption (text)  ──FLUX.2-klein──▶  image
       │                          │
       └──────────  (text, image) pair  ──────────┐
                                                  ▼
@@ -48,7 +48,7 @@ an **NVIDIA RTX 4060 Ti 16GB (Ada generation)**.
 
 - bf16 (native on Ada) + gradient checkpointing + small batches to fit in 16GB
 - `flash_attention_2` (falls back automatically to `sdpa` if not installed)
-- Disk: ~10+ GB for model caches (SD-Turbo + Qwen3-VL 2B ×2)
+- Disk: ~10+ GB for model caches (FLUX.2-klein-4B + Qwen3-VL 2B ×2)
 
 If you don't have a GPU, a [smoke test](#smoke-test-no-gpu) verifies the wiring on CPU.
 
@@ -82,16 +82,17 @@ This runs the following in order (each can also be run individually):
 
 | Target | What it does |
 |---|---|
-| `make data`            | generate data with SD-Turbo → `data/{train,eval}` |
+| `make data`            | generate data with FLUX.2-klein → `data/{train,eval}` |
 | `make eval-base`       | base model retrieval quality → `outputs/metrics_base.json` |
 | `make train`           | fine-tune the embedding model → `outputs/model/` |
 | `make eval`            | fine-tuned retrieval quality → `outputs/metrics_finetuned.json` |
 | `make train-reranker`  | fine-tune the reranker → `outputs/reranker/` |
-| `make rerank`          | **4-way evaluation** (embedding {base,ft} × reranker {base,ft}) → `outputs/rerank_metrics.json` + examples |
+| `make rerank`          | **6-way evaluation** (embedding {base,ft} × reranker {base,ft,none}) → `outputs/rerank_metrics.json` + examples |
 
 Afterwards, compare `metrics_base.json` vs `metrics_finetuned.json` (embedding
-only), and `rerank_metrics.json` for the four two-stage combinations
-(base+base / ft+base / base+ft / ft+ft) — NDCG / Recall / MRR.
+only), and `rerank_metrics.json` for the six two-stage combinations
+(embedding {base,ft} × reranker {base,ft,none}, where `none` is the
+embedding-only reference) — NDCG / Recall / MRR.
 
 ### Visualize the results (Gradio)
 
@@ -105,7 +106,8 @@ uv run python app.py        # → http://localhost:7860
 Tabs: **📊 Metrics** (embedding base vs fine-tuned bar chart + delta table) /
 **🖼️ Dataset** (browse generated images + captions) /
 **🔄 Reranking** (rank before/after) /
-**🔀 Two-stage (4 patterns)** (embedding × reranker 4-way comparison chart + table).
+**🔀 Two-stage (6 patterns)** (embedding × reranker comparison; chart shows the
+main 4 combos, table shows all 6).
 Switch between `outputs` and `outputs_smoke`.
 
 ### Reproducible runs (DVC, optional)
@@ -131,27 +133,29 @@ uv run python -m qwen3vl_demo.train --config configs/default.yaml
 
 ---
 
-## Choosing the image-generation model (SD-Turbo / FLUX.2-klein)
+## Choosing the image-generation model (full vs fp8)
 
 Image generation is loaded via `AutoPipelineForText2Image`, so **any diffusers
-text-to-image model** can be set as `image_gen.model_id`. Two presets are provided:
+text-to-image model** can be set as `image_gen.model_id`. Two presets are provided,
+both [FLUX.2-klein](https://huggingface.co/black-forest-labs/FLUX.2-klein-4B)
+(Apache-2.0, step-distilled rectified-flow):
 
-| Preset | Model | License | Recommended settings |
-|---|---|---|---|
-| `default` | [SD-Turbo](https://huggingface.co/stabilityai/sd-turbo) | Stability AI Community | steps=1, guidance=0.0 |
-| `flux` | [FLUX.2-klein-4b-fp8](https://huggingface.co/black-forest-labs/FLUX.2-klein-4b-fp8) | **Apache-2.0** | steps=4, guidance=1.0 |
+| Preset | Model | License | VRAM | Recommended settings |
+|---|---|---|---|---|
+| `default` | [FLUX.2-klein-4B](https://huggingface.co/black-forest-labs/FLUX.2-klein-4B) | Apache-2.0 | full bf16 | steps=4, guidance=1.0 |
+| `flux` | [FLUX.2-klein-4b-fp8](https://huggingface.co/black-forest-labs/FLUX.2-klein-4b-fp8) | Apache-2.0 | ~4 GB (fp8) | steps=4, guidance=1.0 |
 
 ```bash
-make data PROFILE=flux        # generate with FLUX.2-klein (use PROFILE=flux for later stages too)
+make data PROFILE=flux        # generate with the fp8 checkpoint (use PROFILE=flux for later stages too)
 ```
 
-- **FLUX.2-klein is Apache-2.0**, so it avoids SD-Turbo's commercial restrictions (~4 GB VRAM in fp8).
+- **Both presets are Apache-2.0**, so there are no commercial restrictions.
+- The fp8 preset keeps VRAM low (~4 GB) but ships a single-file checkpoint; if
+  `AutoPipelineForText2Image` can't load `black-forest-labs/FLUX.2-klein-4b-fp8`
+  in your diffusers version, point `image_gen.model_id` in `configs/flux.yaml` at
+  the diffusers-format mirror
+  [`Photoroom/FLUX.2-klein-4b-fp8-diffusers`](https://huggingface.co/Photoroom/FLUX.2-klein-4b-fp8-diffusers).
 - Loading FLUX.2 needs a **recent `diffusers` with FLUX.2 support** — upgrade if needed.
-- `black-forest-labs/FLUX.2-klein-4b-fp8` is a single-file checkpoint; if
-  `AutoPipelineForText2Image` can't load it in your diffusers version, point
-  `image_gen.model_id` in `configs/flux.yaml` at the diffusers-format mirror
-  [`Photoroom/FLUX.2-klein-4b-fp8-diffusers`](https://huggingface.co/Photoroom/FLUX.2-klein-4b-fp8-diffusers)
-  or [`black-forest-labs/FLUX.2-klein-4B`](https://huggingface.co/black-forest-labs/FLUX.2-klein-4B).
 
 ---
 
@@ -200,7 +204,7 @@ Training captions are synthesized in
 - `ADJECTIVES`, `SETTINGS`, `TEMPLATES`
 
 Example: `"a fluffy photo of a cat on a wooden table"`. This exact string is used
-as both (1) the SD-Turbo prompt and (2) the ground-truth retrieval query.
+as both (1) the FLUX.2-klein prompt and (2) the ground-truth retrieval query.
 Counts and seeds are config-driven; train and eval use different seeds so their
 captions never overlap.
 
@@ -213,7 +217,7 @@ qwen3-vl-demo/
 ├── src/qwen3vl_demo/
 │   ├── config.py          # YAML -> dataclass, --config / --profile
 │   ├── prompts.py         # template-combination caption generation
-│   ├── generate_data.py   # SD-Turbo (or stub) image generation → datasets
+│   ├── generate_data.py   # FLUX.2-klein (or stub) image generation → datasets
 │   ├── models.py          # embedding model loading (with attn fallback)
 │   ├── evaluate.py        # InformationRetrievalEvaluator → NDCG/Recall
 │   ├── train.py           # fine-tune embeddings with MultipleNegativesRankingLoss
@@ -257,11 +261,11 @@ apply to their outputs. Always check each model card before use.
 |---|---|---|
 | [Qwen3-VL-Embedding-2B](https://huggingface.co/Qwen/Qwen3-VL-Embedding-2B) | Apache-2.0 | permissive |
 | [Qwen3-VL-Reranker-2B](https://huggingface.co/Qwen/Qwen3-VL-Reranker-2B) | Apache-2.0 | permissive |
-| [SD-Turbo](https://huggingface.co/stabilityai/sd-turbo) (image gen, default) | [Stability AI Community License](https://stability.ai/license) | **Free (incl. commercial) under USD 1M annual revenue; above that requires a separate enterprise license.** Terms may apply to generated images |
-| [FLUX.2-klein-4b-fp8](https://huggingface.co/black-forest-labs/FLUX.2-klein-4b-fp8) (image gen, `flux` preset) | Apache-2.0 | permissive; recommended if you need to avoid commercial restrictions |
+| [FLUX.2-klein-4B](https://huggingface.co/black-forest-labs/FLUX.2-klein-4B) (image gen, default) | Apache-2.0 | permissive; terms may apply to generated images |
+| [FLUX.2-klein-4b-fp8](https://huggingface.co/black-forest-labs/FLUX.2-klein-4b-fp8) (image gen, `flux` preset) | Apache-2.0 | permissive; fp8 variant for lower VRAM |
 | CLIP (`clip-ViT-B-32`, smoke only) | MIT | permissive |
 
-> ⚠️ **Commercial use:** the default image-generation model SD-Turbo is under the
-> Stability AI Community License. Organizations over USD 1M annual revenue need a
-> separate license. To avoid the restriction, switch to **`PROFILE=flux`
-> (Apache-2.0 FLUX.2-klein)** or change `image_gen.model_id`.
+> ℹ️ **Note:** every model in this demo (FLUX.2-klein for image generation,
+> Qwen3-VL embedding/reranker) is **Apache-2.0**, so there are no commercial
+> revenue restrictions. Still, check each model card, as terms may apply to
+> generated outputs.
