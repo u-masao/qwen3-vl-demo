@@ -6,7 +6,7 @@
 
 パイプライン全体像::
 
-    1. generate_data  キャプションから SD-Turbo で画像を生成し、(text, image) の
+    1. generate_data  キャプションから FLUX.2-klein で画像を生成し、(text, image) の
                       データセットを作る（キャプション＝検索クエリの正解になる）
     2. evaluate       テキスト→画像検索の精度（NDCG / Recall@k など）を測定する
     3. train          Qwen3-VL-Embedding-2B を Sentence Transformers で微調整する

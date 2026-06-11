@@ -13,16 +13,28 @@ def test_rank_of():
 
 
 def test_build_relevant_strict():
-    ds = [{"category": "a"}, {"category": "b"}, {"category": "a"}]
+    # 正解は「同一ペルソナの全文書」（マルチポジティブ）。
+    ds = [
+        {"persona": "p1", "category": "a"},
+        {"persona": "p2", "category": "b"},
+        {"persona": "p1", "category": "a"},
+    ]
     rel = _build_relevant(ds, relevant_same_category=False)
-    assert rel == [{0}, {1}, {2}]
+    # p1 = {0,2}、p2 = {1}。
+    assert rel == [{0, 2}, {1}, {0, 2}]
 
 
 def test_build_relevant_same_category():
-    ds = [{"category": "a"}, {"category": "b"}, {"category": "a"}]
+    # relevant_same_category=True ではペルソナ集合に同一カテゴリ集合を和で追加する。
+    ds = [
+        {"persona": "p1", "category": "a"},
+        {"persona": "p2", "category": "a"},
+        {"persona": "p2", "category": "b"},
+    ]
     rel = _build_relevant(ds, relevant_same_category=True)
-    # カテゴリ "a" は {0,2}、"b" は {1}。
-    assert rel == [{0, 2}, {1}, {0, 2}]
+    # ペルソナ: p1={0}, p2={1,2} / カテゴリ: a={0,1}, b={2}。
+    # row0: {0} | {0,1} = {0,1} / row1: {1,2} | {0,1} = {0,1,2} / row2: {1,2} | {2} = {1,2}
+    assert rel == [{0, 1}, {0, 1, 2}, {1, 2}]
 
 
 def test_metrics_perfect_ranking():

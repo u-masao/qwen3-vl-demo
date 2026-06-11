@@ -56,12 +56,12 @@ class DataCfg:
 
 @dataclass
 class ImageGenCfg:
-    """画像生成モデル（SD-Turbo）の設定（YAML の ``image_gen`` セクション）。"""
+    """画像生成モデル（FLUX.2-klein-4B）の設定（YAML の ``image_gen`` セクション）。"""
 
-    model_id: str = "stabilityai/sd-turbo"  # "stub" にすると合成スタブ画像に切替
-    num_inference_steps: int = 1  # SD-Turbo は 1〜4 ステップ向けに蒸留されている
-    guidance_scale: float = 0.0  # Turbo 系は classifier-free guidance を使わない
-    batch_size: int = 8  # パイプライン 1 回あたりに生成する画像枚数
+    model_id: str = "black-forest-labs/FLUX.2-klein-4B"  # "stub" にすると合成スタブ画像に切替
+    num_inference_steps: int = 4  # FLUX.2-klein は 4 ステップ向けに蒸留されている
+    guidance_scale: float = 1.0  # FLUX.2-klein-4B の推奨値
+    batch_size: int = 1  # パイプライン 1 回あたりに生成する画像枚数（VRAM 節約のため 1）
 
 
 @dataclass

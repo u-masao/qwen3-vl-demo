@@ -3,7 +3,7 @@
 prompts.py が作ったキャプション 1 文ごとに、対応する画像を 1 枚レンダリングする:
 
   * 通常（GPU）  → diffusers の text-to-image モデルで実生成。``image_gen.model_id`` で
-                   SD-Turbo（既定）/ FLUX.2-klein（configs/flux.yaml）などを切り替えられる
+                   FLUX.2-klein-4B（既定）/ fp8 版（configs/flux.yaml）などを切り替えられる
   * ``smoke``    → 安価な合成スタブ画像（モデルのダウンロード不要・CPU 可）
 
 結果は ``datasets.Dataset`` の 2 スプリットとして ``<data_dir>/train`` と
@@ -12,6 +12,8 @@ prompts.py が作ったキャプション 1 文ごとに、対応する画像を
   * ``anchor``   (str)   キャプション ＝ 検索クエリ文
   * ``positive`` (Image) レンダリングした画像 ＝ 検索のターゲット
   * ``category`` (str)   被写体カテゴリ（緩い評価のオプションで使用）
+  * ``subject``  (str)   被写体単語（"cat" など）
+  * ``persona``  (str)   ペルソナ名（"user_alpha" など）＝ 嗜好ベース検索のクエリ
 
 カラム名の ``anchor`` / ``positive`` は Sentence Transformers の対照学習
 （MultipleNegativesRankingLoss）が期待する慣習的な名前に合わせてある。詳しくは
@@ -55,12 +57,12 @@ def _generate_stub(samples: list[Sample], size: int) -> list[Image.Image]:
 def _generate_with_diffusers(samples: list[Sample], cfg: Config) -> list[Image.Image]:
     """diffusers の text-to-image モデルで画像をレンダリングする（モデル非依存）。
 
-    ``AutoPipelineForText2Image`` がリポジトリの種類を自動判別するため、SD-Turbo でも
-    FLUX.2-klein でも同じコードで動く。モデルごとの違い（ステップ数・guidance）は
+    ``AutoPipelineForText2Image`` がリポジトリの種類を自動判別するため、FLUX.2-klein でも
+    他の diffusers モデルでも同じコードで動く。モデルごとの違い（ステップ数・guidance）は
     すべて設定（``image_gen.num_inference_steps`` / ``guidance_scale``）で吸収する:
 
-      * ``stabilityai/sd-turbo``                  → steps=1, guidance=0.0
-      * ``black-forest-labs/FLUX.2-klein-4b-fp8`` → steps=4, guidance=1.0（configs/flux.yaml）
+      * ``black-forest-labs/FLUX.2-klein-4B``     → steps=4, guidance=1.0（既定 / configs/default.yaml）
+      * ``black-forest-labs/FLUX.2-klein-4b-fp8`` → steps=4, guidance=1.0（VRAM 節約版 / configs/flux.yaml）
 
     diffusers / torch はここで遅延 import する。これによりスモークモード
     （スタブ画像）では GPU 系の重い依存を一切ロードしない。

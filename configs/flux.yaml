@@ -1,8 +1,9 @@
-# FLUX profile: same as `default`, but generate data with FLUX.2-klein-4b-fp8.
+# FLUX (fp8) profile: same as `default`, but generate data with the fp8
+# checkpoint FLUX.2-klein-4b-fp8 instead of the full-precision FLUX.2-klein-4B.
 #
-# FLUX.2 [klein] 4B (Apache-2.0) is a step-distilled rectified-flow model — a
-# permissive alternative to SD-Turbo (no Stability non-commercial terms). The
-# fp8 checkpoint keeps VRAM low (~4 GB), so it fits comfortably on a 16GB card.
+# FLUX.2 [klein] 4B (Apache-2.0) is a step-distilled rectified-flow model. The
+# fp8 checkpoint keeps VRAM low (~4 GB), so it fits comfortably on a 16GB card
+# (use this preset if the full-precision default is too heavy on your GPU).
 #
 # Usage:
 #   make data PROFILE=flux        # generate images with FLUX.2-klein
@@ -37,7 +38,7 @@ image_gen:
   model_id: black-forest-labs/FLUX.2-klein-4b-fp8
   num_inference_steps: 4          # FLUX.2-klein is step-distilled to 4 steps.
   guidance_scale: 1.0             # reference setting for the 4B model.
-  batch_size: 4                   # FLUX is heavier than SD-Turbo; smaller batches.
+  batch_size: 4                   # fp8 keeps VRAM low, so a larger batch than the default (1) fits.
 
 embedding:
   model_id: Qwen/Qwen3-VL-Embedding-2B

@@ -4,14 +4,14 @@
 
 **合成データだけで「画像検索の精度が上がる」体験**を、最小構成で一気通貫に再現するデモです。
 
-1. 🎨 **データ生成** — 画像生成モデル [SD-Turbo](https://huggingface.co/stabilityai/sd-turbo) で、キャプション付き画像データセットを自動生成（キャプション＝そのまま検索クエリの正解になる）
+1. 🎨 **データ生成** — 画像生成モデル [FLUX.2-klein-4B](https://huggingface.co/black-forest-labs/FLUX.2-klein-4B) で、キャプション付き画像データセットを自動生成（キャプション＝そのまま検索クエリの正解になる）
 2. 📐 **ベース評価** — [Qwen3-VL-Embedding-2B](https://huggingface.co/Qwen/Qwen3-VL-Embedding-2B) のテキスト→画像検索精度（NDCG / Recall@k）を測定
 3. 🔧 **ファインチューニング** — [Sentence Transformers](https://sbert.net) で埋め込みモデルを合成ペアに適応
 4. 📈 **再評価** — 学習前後で検索精度を比較
 5. 🥇 **リランク** — [Qwen3-VL-Reranker-2B](https://huggingface.co/Qwen/Qwen3-VL-Reranker-2B) をファインチューニングし、上位候補を再ランクして仕上げ
 
 ```
-caption (text)  ──SD-Turbo──▶  image
+caption (text)  ──FLUX.2-klein──▶  image
       │                          │
       └──────────  (text, image) ペア  ──────────┐
                                                  ▼
@@ -44,7 +44,7 @@ caption (text)  ──SD-Turbo──▶  image
 
 - bf16（Ada はネイティブ対応）+ 勾配チェックポイント + 小バッチで 16GB に収まるよう調整
 - `flash_attention_2`（未導入時は自動で `sdpa` にフォールバック）
-- ディスク: モデルキャッシュ（SD-Turbo + Qwen3-VL 2B ×2）で十数 GB 程度
+- ディスク: モデルキャッシュ（FLUX.2-klein-4B + Qwen3-VL 2B ×2）で十数 GB 程度
 
 GPU が無い環境では、配線だけを確認できる [スモークテスト](#スモークテストgpu不要) を用意しています。
 
@@ -78,16 +78,16 @@ make all                     # フルパイプライン（GPU 推奨）
 
 | ターゲット | 内容 |
 |---|---|
-| `make data`            | SD-Turbo でデータ生成 → `data/{train,eval}` に保存 |
+| `make data`            | FLUX.2-klein でデータ生成 → `data/{train,eval}` に保存 |
 | `make eval-base`       | ベースモデルの検索精度 → `outputs/metrics_base.json` |
 | `make train`           | 埋め込みモデルを FT → `outputs/model/` に保存 |
 | `make eval`            | FT 後の検索精度 → `outputs/metrics_finetuned.json` |
 | `make train-reranker`  | リランカーを FT → `outputs/reranker/` に保存 |
-| `make rerank`          | **4 パターン評価**（埋め込み{base,ft}×リランカー{base,ft}）→ `outputs/rerank_metrics.json` ＋事例 |
+| `make rerank`          | **6 パターン評価**（埋め込み{base,ft}×リランカー{base,ft,none}）→ `outputs/rerank_metrics.json` ＋事例 |
 
 完了後、`metrics_base.json` と `metrics_finetuned.json`（埋め込み単体）に加え、
-`rerank_metrics.json` で 2 段階検索の 4 パターン（base+base / ft+base / base+ft / ft+ft）の
-NDCG / Recall / MRR を比較できます。
+`rerank_metrics.json` で 2 段階検索の 6 パターン（埋め込み{base,ft}×リランカー{base,ft,none}、
+`none` は埋め込み検索のみの参考値）の NDCG / Recall / MRR を比較できます。
 
 ### 結果を可視化する（Gradio）
 
@@ -101,7 +101,7 @@ uv run python app.py        # → http://localhost:7860
 タブ構成: **📊 メトリクス比較**（埋め込みのベース vs FT 後の棒グラフ＋差分表） /
 **🖼️ データセット閲覧**（生成画像とキャプションを 1 枚ずつ） /
 **🔄 Reranking デモ**（リランク前後の順位比較） /
-**🔀 2段階検索 (4パターン)**（埋め込み×リランカーの 4 パターン比較棒グラフ＋表）。
+**🔀 2段階検索 (6パターン)**（埋め込み×リランカーの比較。グラフは主要 4 パターン、表は 6 パターン）。
 `outputs` / `outputs_smoke` を切り替えて閲覧できます。
 
 ### DVC で再現実行する（任意）
@@ -127,27 +127,29 @@ uv run python -m qwen3vl_demo.train --config configs/default.yaml
 
 ---
 
-## 画像生成モデルの切り替え（SD-Turbo / FLUX.2-klein）
+## 画像生成モデルの切り替え（フル精度 / fp8）
 
 画像生成は `AutoPipelineForText2Image` でロードするため、**任意の diffusers text-to-image
-モデル**を `image_gen.model_id` に指定できます。プリセットを 2 つ用意しています。
+モデル**を `image_gen.model_id` に指定できます。プリセットは 2 つとも
+[FLUX.2-klein](https://huggingface.co/black-forest-labs/FLUX.2-klein-4B)
+（Apache-2.0・4 ステップ蒸留の rectified-flow）で、精度（フル / fp8）が異なります。
 
-| プリセット | モデル | ライセンス | 推奨設定 |
-|---|---|---|---|
-| `default` | [SD-Turbo](https://huggingface.co/stabilityai/sd-turbo) | Stability AI Community | steps=1, guidance=0.0 |
-| `flux` | [FLUX.2-klein-4b-fp8](https://huggingface.co/black-forest-labs/FLUX.2-klein-4b-fp8) | **Apache-2.0** | steps=4, guidance=1.0 |
+| プリセット | モデル | ライセンス | VRAM | 推奨設定 |
+|---|---|---|---|---|
+| `default` | [FLUX.2-klein-4B](https://huggingface.co/black-forest-labs/FLUX.2-klein-4B) | Apache-2.0 | フル bf16 | steps=4, guidance=1.0 |
+| `flux` | [FLUX.2-klein-4b-fp8](https://huggingface.co/black-forest-labs/FLUX.2-klein-4b-fp8) | Apache-2.0 | 約 4GB（fp8） | steps=4, guidance=1.0 |
 
 ```bash
-make data PROFILE=flux        # FLUX.2-klein で生成（以降も PROFILE=flux で通せます）
+make data PROFILE=flux        # fp8 版で生成（以降も PROFILE=flux で通せます）
 ```
 
-- **FLUX.2-klein は Apache-2.0** なので、SD-Turbo のような商用上の制約がありません（fp8 で VRAM 約 4GB）。
-- FLUX.2 のロードには **FLUX.2 対応の新しめの `diffusers`** が必要です（古い場合は更新してください）。
-- `black-forest-labs/FLUX.2-klein-4b-fp8` は単一ファイル形式のため、お使いの diffusers で
-  `AutoPipelineForText2Image` が読めない場合は、diffusers 形式ミラー
+- **どちらのプリセットも Apache-2.0** なので、商用上の制約はありません。
+- `flux` プリセット（fp8）は VRAM を約 4GB に抑えられますが、`black-forest-labs/FLUX.2-klein-4b-fp8`
+  は単一ファイル形式のため、お使いの diffusers で `AutoPipelineForText2Image` が読めない場合は、
+  diffusers 形式ミラー
   [`Photoroom/FLUX.2-klein-4b-fp8-diffusers`](https://huggingface.co/Photoroom/FLUX.2-klein-4b-fp8-diffusers)
-  または [`black-forest-labs/FLUX.2-klein-4B`](https://huggingface.co/black-forest-labs/FLUX.2-klein-4B)
   を `configs/flux.yaml` の `image_gen.model_id` に指定してください。
+- FLUX.2 のロードには **FLUX.2 対応の新しめの `diffusers`** が必要です（古い場合は更新してください）。
 
 ---
 
@@ -194,7 +196,7 @@ make lint      # ruff
 - `ADJECTIVES`（形容詞）／ `SETTINGS`（情景）／ `TEMPLATES`（文型）
 
 例: `"a fluffy photo of a cat on a wooden table"`。この文がそのまま
-① SD-Turbo へのプロンプト と ② 検索評価の正解クエリ の両方になります。
+① FLUX.2-klein へのプロンプト と ② 検索評価の正解クエリ の両方になります。
 件数・seed は config で制御し、train と eval は別 seed で重複しないようにしています。
 
 ---
@@ -206,7 +208,7 @@ qwen3-vl-demo/
 ├── src/qwen3vl_demo/
 │   ├── config.py          # YAML -> dataclass、--config / --profile
 │   ├── prompts.py         # テンプレート組み合わせでキャプション生成
-│   ├── generate_data.py   # SD-Turbo（or スタブ）で画像生成 → datasets 保存
+│   ├── generate_data.py   # FLUX.2-klein（or スタブ）で画像生成 → datasets 保存
 │   ├── models.py          # 埋め込みモデルのロード（attn フォールバック付き）
 │   ├── evaluate.py        # InformationRetrievalEvaluator で NDCG/Recall
 │   ├── train.py           # MultipleNegativesRankingLoss で埋め込みを FT
@@ -250,10 +252,10 @@ NDCG@10 が 0.888 → 0.947 に改善した報告があります。
 |---|---|---|
 | [Qwen3-VL-Embedding-2B](https://huggingface.co/Qwen/Qwen3-VL-Embedding-2B) | Apache-2.0 | 寛容 |
 | [Qwen3-VL-Reranker-2B](https://huggingface.co/Qwen/Qwen3-VL-Reranker-2B) | Apache-2.0 | 寛容 |
-| [SD-Turbo](https://huggingface.co/stabilityai/sd-turbo)（画像生成・既定） | [Stability AI Community License](https://stability.ai/license) | **年商 100 万ドル未満なら商用含め無償／超える場合は別途エンタープライズ契約が必要**。生成画像にも条件が及びます |
-| [FLUX.2-klein-4b-fp8](https://huggingface.co/black-forest-labs/FLUX.2-klein-4b-fp8)（画像生成・`flux` プリセット） | Apache-2.0 | 寛容。商用制約を避けたい場合の推奨 |
+| [FLUX.2-klein-4B](https://huggingface.co/black-forest-labs/FLUX.2-klein-4B)（画像生成・既定） | Apache-2.0 | 寛容。生成画像に条件が及ぶ場合あり |
+| [FLUX.2-klein-4b-fp8](https://huggingface.co/black-forest-labs/FLUX.2-klein-4b-fp8)（画像生成・`flux` プリセット） | Apache-2.0 | 寛容。VRAM を抑えた fp8 版 |
 | CLIP（`clip-ViT-B-32`、smoke 用） | MIT | 寛容 |
 
-> ⚠️ **商用利用の注意**: 既定の画像生成モデル SD-Turbo は Stability AI Community License です。
-> 年商が 100 万ドルを超える組織での商用利用には別途ライセンスが必要になります。制約を避けたい場合は
-> **`PROFILE=flux`（Apache-2.0 の FLUX.2-klein）** に切り替えるか、`image_gen.model_id` を差し替えてください。
+> ℹ️ **補足**: 本デモで使うモデルは画像生成（FLUX.2-klein）・埋め込み・リランカーのいずれも
+> **Apache-2.0** で、年商などの商用制約はありません。ただし生成物に条件が及ぶ場合があるため、
+> 利用前に各モデルカードを確認してください。

@@ -2,7 +2,7 @@
 #
 # Usage:
 #   make setup                 # install deps with uv
-#   make all                   # full pipeline (GPU: SD-Turbo + Qwen3-VL)
+#   make all                   # full pipeline (GPU: FLUX.2-klein + Qwen3-VL)
 #   make smoke                 # CPU wiring check (stub images + small CLIP model)
 #   make data PROFILE=default  # run a single stage with an explicit profile
 #

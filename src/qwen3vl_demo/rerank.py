@@ -1,4 +1,4 @@
-"""2 段階検索（埋め込み → リランカー）を 4 パターンで評価＋デモする。
+"""2 段階検索（埋め込み → リランカー）を 6 パターンで評価＋デモする。
 
 実運用の検索システムでよく使われる「retrieve-then-rerank」構成を再現する:
 
@@ -7,13 +7,14 @@
   * **第 2 段（rerank）**: その k 件だけをリランカー（cross-encoder）でクエリと 1 件ずつ
     突き合わせて精密にスコアリングし、並べ替える。
 
-埋め込み・リランカーそれぞれに「オリジナル（base）」と「ファインチューニング済み（ft）」が
-あるので、その直積 **4 パターン** で検索精度を評価する:
+埋め込み（base / ft）× リランカー（base / ft / なし）の **6 パターン** で検索精度を評価する:
 
-  1. base  + base   （オリジナル埋め込み ＋ オリジナルリランカー）
-  2. ft    + base   （FT 埋め込み       ＋ オリジナルリランカー）
-  3. base  + ft     （オリジナル埋め込み ＋ FT リランカー）
-  4. ft    + ft     （FT 埋め込み       ＋ FT リランカー）
+  1. base  + none   （オリジナル埋め込み ＋ リランクなし＝参考値）
+  2. ft    + none   （FT 埋め込み       ＋ リランクなし＝参考値）
+  3. base  + base   （オリジナル埋め込み ＋ オリジナルリランカー）
+  4. ft    + base   （FT 埋め込み       ＋ オリジナルリランカー）
+  5. base  + ft     （オリジナル埋め込み ＋ FT リランカー）
+  6. ft    + ft     （FT 埋め込み       ＋ FT リランカー）
 
 各パターンについて NDCG / Recall@k / MRR を計算し ``outputs/rerank_metrics.json`` に保存する。
 さらに数クエリ分の「リランク前後の順位」を ``outputs/rerank_examples.json`` に書き出す。
@@ -173,7 +174,7 @@ def _rank_of(target: int, ordered: list[int]) -> int | None:
 
 
 def run_rerank(cfg: Config, num_queries: int = 5) -> None:
-    """4 パターンの 2 段階検索を評価し、メトリクスと事例を保存する。"""
+    """6 パターンの 2 段階検索を評価し、メトリクスと事例を保存する。"""
     if not cfg.reranker.model_id:
         # スモーク等、リランカー未設定の場合は何もしない。
         logger.info("リランカーが無効（reranker.model_id が null）のためスキップします。")
@@ -229,7 +230,7 @@ def run_rerank(cfg: Config, num_queries: int = 5) -> None:
         json.dump(metrics, fh, indent=2, sort_keys=True)
 
     # サマリを表示（主要指標 NDCG@top_k）。
-    logger.info("=== 4 パターン評価（NDCG@%d / MRR）===", top_k)
+    logger.info("=== 6 パターン評価（NDCG@%d / MRR）===", top_k)
     for key in sorted(metrics):
         m = metrics[key]
         logger.info(
@@ -243,7 +244,7 @@ def run_rerank(cfg: Config, num_queries: int = 5) -> None:
     best_rr = "ft" if "ft" in rr_variants else "base"
     examples = []
     seen_queries: set[str] = set()
-    for qi, row in enumerate(eval_ds):
+    for qi in range(len(eval_ds)):
         query = queries[qi]
         if query in seen_queries:
             continue  # 同一ペルソナクエリは代表 1 件だけ表示
@@ -286,7 +287,7 @@ def main() -> None:
         level=logging.INFO,
     )
     parser = argparse.ArgumentParser(
-        description="埋め込み×リランカーの 4 パターン 2 段階検索評価。"
+        description="埋め込み×リランカーの 6 パターン 2 段階検索評価。"
     )
     add_config_args(parser)
     parser.add_argument(
