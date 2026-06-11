@@ -113,7 +113,8 @@ def build_sample_grid(cfg: Config, split: str, n: int, out_dir: Path) -> Path | 
     plt = _setup_matplotlib()
     cols = 4
     rows = (len(indices) + cols - 1) // cols
-    fig, axes = plt.subplots(rows, cols, figsize=(cols * 2.6, rows * 3.0))
+    # 行の高さは、キャプションが 3 行に折り返しても上の画像に重ならないよう広めに取る。
+    fig, axes = plt.subplots(rows, cols, figsize=(cols * 2.6, rows * 3.3))
     axes = axes.flatten() if hasattr(axes, "flatten") else [axes]
 
     for ax, idx in zip(axes, indices, strict=False):
@@ -128,7 +129,8 @@ def build_sample_grid(cfg: Config, split: str, n: int, out_dir: Path) -> Path | 
         ax.axis("off")
 
     fig.suptitle(f"Synthetic dataset samples ({split})", fontsize=12)
-    fig.tight_layout(rect=(0, 0, 1, 0.97))
+    # h_pad で行同士の縦間隔を広げ、折り返したキャプションが上の画像に重ならないようにする。
+    fig.tight_layout(rect=(0, 0, 1, 0.97), h_pad=3.0)
     out_path = out_dir / "sample_grid.png"
     fig.savefig(out_path, dpi=120, bbox_inches="tight")
     plt.close(fig)
@@ -162,6 +164,7 @@ def build_retrieval_before_after(
         書き出した PNG のパス。前提が揃わない（eval が無い / FT モデルが無い）場合は ``None``。
     """
     # 検索の取得規則・正解定義は評価本体と完全に同じものを使う。
+    from .prompts import PERSONA_MAP
     from .rerank import _build_relevant, _retrieve_topk
 
     eval_path = cfg.data_path / "eval"
@@ -192,35 +195,105 @@ def build_retrieval_before_after(
     logger.info("Before/After 図: FT 埋め込みで取得")
     ft_ranked = _retrieve_topk(cfg, str(cfg.model_path), queries, corpus_images, k)
 
-    plt = _setup_matplotlib()
-    n_rows = len(show_idx) * 2  # クエリごとに base / ft の 2 段
-    fig, axes = plt.subplots(n_rows, k, figsize=(k * 1.8, n_rows * 2.0), squeeze=False)
+    from matplotlib.patches import Rectangle
 
-    for row_block, qi in enumerate(show_idx):
+    plt = _setup_matplotlib()
+    n_blocks = len(show_idx)
+    # 1 ペルソナ = 3 段（好み一覧テキスト / Base 画像 / Fine-Tuned 画像）のブロック。
+    # ブロック間にはスペーサー行を挟み、ブロック内より広い間隔を空ける
+    # （枠線どうしが重ならないように）。
+    text_h = 0.3  # テキスト段は画像段より低くする。
+    spacer_h = 0.45  # ブロック間スペーサーの高さ。
+    height_ratios: list[float] = []
+    block_row0: list[int] = []  # 各ブロックの先頭（テキスト段）の行インデックス。
+    for b in range(n_blocks):
+        if b > 0:
+            height_ratios.append(spacer_h)
+        block_row0.append(len(height_ratios))
+        height_ratios += [text_h, 1.0, 1.0]
+    fig_h = sum(height_ratios) * 1.9
+    fig = plt.figure(figsize=(k * 1.8, fig_h))
+    gs = fig.add_gridspec(len(height_ratios), k, height_ratios=height_ratios,
+                          hspace=0.1, wspace=0.06)
+
+    # 後でブロックを囲む枠線・段ラベルを描くために、各段の axes を覚えておく。
+    block_geom: list[dict] = []
+    for b, qi in enumerate(show_idx):
         rel = relevant[qi]
-        for which, (label, ranked) in enumerate(
-            (("Base", base_ranked), ("Fine-tuned", ft_ranked))
+        # そのペルソナが好む被写体名（PERSONA_MAP の定義そのもの）。
+        persona_items = PERSONA_MAP.get(queries[qi], [])[:k]
+        r0 = block_row0[b]
+
+        # 1 段目: 「user_xxx : favorite -> a, b, c, ...」を 1 行のテキストで。
+        ax_text = fig.add_subplot(gs[r0, :])
+        ax_text.axis("off")
+        # 画像の左端ではなく、枠内に確保したラベル帯のぶんだけ右に寄せて書き出す。
+        ax_text.text(
+            0.0, 0.5,
+            f"{queries[qi]} : favorite -> {', '.join(persona_items)}",
+            ha="left", va="center", fontsize=12, color="#2ca02c",
+            transform=ax_text.transAxes,
+        )
+
+        # 2・3 段目: Base / Fine-Tuned の取得画像を k 枚ずつ。
+        row_axes: dict[str, list] = {}
+        for which, (label, items) in enumerate(
+            (("Base model", base_ranked[qi]), ("Fine-Tuned model", ft_ranked[qi]))
         ):
-            r = row_block * 2 + which
+            r = r0 + 1 + which
+            row_axes[label] = []
             for c in range(k):
-                ax = axes[r][c]
-                doc = ranked[qi][c]
-                ax.imshow(corpus_images[doc])
+                ax = fig.add_subplot(gs[r, c])
+                row_axes[label].append(ax)
                 ax.set_xticks([])
                 ax.set_yticks([])
+                if c >= len(items):
+                    ax.axis("off")
+                    continue
+                doc = items[c]
+                ax.imshow(corpus_images[doc])
                 hit = doc in rel
                 # 正解は緑の太枠、それ以外は薄いグレー枠で「枠あり」に統一する。
                 for spine in ax.spines.values():
                     spine.set_edgecolor("#2ca02c" if hit else "#cccccc")
                     spine.set_linewidth(3.0 if hit else 0.8)
-            # 左端のセルに「クエリ名 + Base/FT」を縦ラベルで添える。
-            axes[r][0].set_ylabel(f"{queries[qi]}\n{label}", fontsize=8, rotation=0,
-                                  ha="right", va="center", labelpad=28)
+        block_geom.append({"text": ax_text, "rows": row_axes})
 
     fig.suptitle(
-        "Text→image retrieval: Base vs Fine-tuned (green = correct persona)", fontsize=11
+        "Text→image retrieval: Base vs Fine-Tuned (green = correct persona)",
+        fontsize=14,
     )
-    fig.tight_layout(rect=(0.04, 0, 1, 0.97))
+    # 枠線とラベルを描く前に余白を確定させる。左はラベル帯、右は枠線ぶんを空ける。
+    fig.subplots_adjust(left=0.12, right=0.95, top=0.95, bottom=0.02)
+
+    # 図全体を覆う透明オーバーレイに、ブロックの枠線と段ラベルを図座標で描く。
+    overlay = fig.add_axes((0, 0, 1, 1))
+    overlay.set_xlim(0, 1)
+    overlay.set_ylim(0, 1)
+    overlay.axis("off")
+    overlay.set_navigate(False)
+    # 枠の内側パディング。左は段ラベル帯ぶん広め、右は画像と枠線の間に隙間を作る。
+    # 上下はブロック間スペーサーより小さくして、隣のブロックの枠と重ならないようにする。
+    pad_l, pad_r, pad_t, pad_b = 0.075, 0.02, 0.008, 0.008
+    for g in block_geom:
+        boxes = [g["text"].get_position()]
+        boxes += [ax.get_position() for axlist in g["rows"].values() for ax in axlist]
+        x0 = min(p.x0 for p in boxes)
+        x1 = max(p.x1 for p in boxes)
+        y0 = min(p.y0 for p in boxes)
+        y1 = max(p.y1 for p in boxes)
+        overlay.add_patch(Rectangle(
+            (x0 - pad_l, y0 - pad_b),
+            (x1 - x0) + pad_l + pad_r, (y1 - y0) + pad_t + pad_b,
+            fill=False, edgecolor="#888888", linewidth=1.2,
+        ))
+        # 段ラベル（Base model / Fine-Tuned model）を枠の内側・左の帯に縦書きで。
+        for label, axlist in g["rows"].items():
+            p = axlist[0].get_position()
+            overlay.text(
+                x0 - pad_l * 0.45, (p.y0 + p.y1) / 2, label,
+                rotation=90, ha="center", va="center", fontsize=11,
+            )
     out_path = out_dir / "retrieval_before_after.png"
     fig.savefig(out_path, dpi=120, bbox_inches="tight")
     plt.close(fig)
