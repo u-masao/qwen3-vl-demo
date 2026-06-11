@@ -12,10 +12,10 @@ PROFILE ?= default
 RUN := uv run
 PY := $(RUN) python -m qwen3vl_demo
 
-.PHONY: setup data eval-base train eval train-reranker rerank all smoke test lint clean help
+.PHONY: setup data eval-base train eval train-reranker rerank all figures smoke test lint clean help
 
 help:
-	@echo "Targets: setup | data | eval-base | train | eval | train-reranker | rerank | all | smoke | test | lint | clean"
+	@echo "Targets: setup | data | eval-base | train | eval | train-reranker | rerank | all | figures | smoke | test | lint | clean"
 	@echo "Override the profile with PROFILE=default|smoke (current: $(PROFILE))"
 
 setup:
@@ -43,6 +43,11 @@ rerank:
 #             -> fine-tune reranker -> rerank.
 all: data eval-base train eval train-reranker rerank
 	@echo "Pipeline complete. Compare outputs/metrics_base.json vs outputs/metrics_finetuned.json"
+
+# README figures: sample-image grid (no model) + retrieval before/after (needs the
+# fine-tuned embedding model). Writes PNGs to docs/images/. Run after `make all`.
+figures:
+	$(PY).figures --profile $(PROFILE)
 
 # Lightweight unit tests (pure-Python, no GPU / no heavy model downloads).
 test:
