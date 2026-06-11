@@ -71,6 +71,7 @@ qwen3vl-evaluate = "qwen3vl_demo.evaluate:main"
 qwen3vl-train = "qwen3vl_demo.train:main"
 qwen3vl-train-reranker = "qwen3vl_demo.train_reranker:main"
 qwen3vl-rerank = "qwen3vl_demo.rerank:main"
+qwen3vl-figures = "qwen3vl_demo.figures:main"
 
 [build-system]
 requires = ["hatchling"]

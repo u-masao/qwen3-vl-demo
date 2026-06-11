@@ -10,18 +10,40 @@
 4. 📈 **再評価** — 学習前後で検索精度を比較
 5. 🥇 **リランク** — [Qwen3-VL-Reranker-2B](https://huggingface.co/Qwen/Qwen3-VL-Reranker-2B) をファインチューニングし、上位候補を再ランクして仕上げ
 
-```
-caption (text)  ──FLUX.2-klein──▶  image
-      │                          │
-      └──────────  (text, image) ペア  ──────────┐
-                                                 ▼
-        Qwen3-VL-Embedding-2B  ──fine-tune──▶  改善した検索
-                                                 ▼
-                   Qwen3-VL-Reranker-2B（FT）で再ランク
+```mermaid
+flowchart LR
+    C["caption<br/>（テキスト）"] -->|FLUX.2-klein| I["画像"]
+    C --> P["(text, image)<br/>ペア"]
+    I --> P
+    P -->|fine-tune| E["Qwen3-VL-<br/>Embedding-2B"]
+    E --> R["改善した<br/>テキスト→画像検索"]
+    R -->|上位を再ランク| RR["Qwen3-VL-<br/>Reranker-2B（FT）"]
 ```
 
 > なぜ面白いか: **人手アノテーション不要**。画像生成のプロンプトがそのまま「正解ラベル付きのクエリ」になるので、
 > 検索モデルの学習データがタダで無限に作れる、という発想のデモです。
+
+---
+
+## 実例
+
+**合成データセット** — FLUX.2-klein が生成したキャプション付き画像（キャプション＝その画像の正解クエリ）:
+
+![合成データセットのサンプル](docs/images/sample_grid.png)
+
+**テキスト→画像検索、ファインチューニング前後の比較** — 同じクエリの上位結果。緑枠が正解。
+FT によって正解画像が上位に上がる様子が分かります:
+
+![ファインチューニング前後の検索比較](docs/images/retrieval_before_after.png)
+
+**Gradio ビューア** — データセットの閲覧とメトリクス比較をブラウザで:
+
+![Gradio データセットタブ](docs/images/gradio_dataset.png)
+![Gradio メトリクスタブ](docs/images/gradio_metrics.png)
+
+> これらの画像は**各自の実行結果から生成**するもので、リポジトリには含めていません。
+> `make all` 後に `make figures` で 2 枚の図を作り、Gradio のスクリーンショットを撮ってください
+> （[`docs/images/README.md`](docs/images/README.md) 参照）。
 
 ---
 
