@@ -117,6 +117,10 @@ class RerankerCfg:
     model_dir: str = "outputs/reranker"
     # リランカー学習で 1 正例あたりに付与する負例（不一致ペア）の数。
     num_negatives: int = 3
+    # 評価（リランク）時の画像 1 枚あたりパッチ（トークン）数の上限。VRAM 節約のために
+    # 大きい画像を抑制する（埋め込みの embedding.max_pixels と同方針）。None なら無制限
+    # （プロセッサのデフォルトに従う＝フル解像度）。Issue #11。
+    max_pixels: int | None = None
 
 
 @dataclass
@@ -331,6 +335,7 @@ def add_reranker_args(parser: argparse.ArgumentParser) -> None:
     g.add_argument("--top-k", type=int, default=_UNSET, help="リランク対象の上位件数（reranker.top_k）。")
     g.add_argument("--reranker-dir", type=str, default=_UNSET, help="FT 済みリランカー保存先（reranker.model_dir）。")
     g.add_argument("--num-negatives", type=int, default=_UNSET, help="リランカー学習の負例数（reranker.num_negatives）。")
+    g.add_argument("--reranker-max-pixels", type=_nullable_int, default=_UNSET, help="リランク時の画像トークン上限 / none（reranker.max_pixels）。")
 
 
 def add_train_args(parser: argparse.ArgumentParser) -> None:
@@ -380,6 +385,7 @@ def _override_targets(cfg: Config):
         "top_k": (cfg.reranker, "top_k"),
         "reranker_dir": (cfg.reranker, "model_dir"),
         "num_negatives": (cfg.reranker, "num_negatives"),
+        "reranker_max_pixels": (cfg.reranker, "max_pixels"),
         "epochs": (cfg.train, "epochs"),
         "batch_size": (cfg.train, "per_device_batch_size"),
         "grad_accum": (cfg.train, "gradient_accumulation_steps"),

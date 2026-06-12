@@ -43,6 +43,7 @@ reranker:
   top_k: 4
   model_dir: outputs_smoke/reranker
   num_negatives: 2
+  max_pixels: null          # rerank is skipped in smoke; kept for ${...} resolution
 
 train:
   epochs: 1

@@ -850,8 +850,8 @@ stages:
     cmd: "uv run python -m qwen3vl_demo.rerank --profile default --device cuda --data-dir
       data --output-dir outputs --model-dir outputs/model --embedding-model Qwen/Qwen3-VL-Embedding-2B
       --attn-impl flash_attention_2 --max-pixels 200704 --query-prompt-name query
-      --reranker-model Qwen/Qwen3-VL-Reranker-2B --reranker-dir outputs/reranker --top-k
-      10 --relevant-same-category false --num-queries 7\n"
+      --reranker-model Qwen/Qwen3-VL-Reranker-2B --reranker-dir outputs/reranker --reranker-max-pixels
+      200704 --top-k 10 --relevant-same-category false --num-queries 7\n"
     deps:
     - path: data/eval
       hash: md5
@@ -874,8 +874,8 @@ stages:
       size: 4055
     - path: src/qwen3vl_demo/rerank.py
       hash: md5
-      md5: 11236a0ad739defa8fa710da67954225
-      size: 13192
+      md5: 69486bf0211445cefd75d7c736f8e95b
+      size: 17556
     outs:
     - path: outputs/rerank_examples.json
       hash: md5
@@ -883,5 +883,5 @@ stages:
       size: 1743
     - path: outputs/rerank_metrics.json
       hash: md5
-      md5: 7383ae919d04a97f334141a3a7f99480
-      size: 1443
+      md5: 6e126def0e2b9e1278af07bd4245e167
+      size: 1425

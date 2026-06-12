@@ -166,6 +166,7 @@ stages:
       --query-prompt-name ${embedding.query_prompt_name}
       --reranker-model ${reranker.model_id}
       --reranker-dir ${reranker.model_dir}
+      --reranker-max-pixels ${reranker.max_pixels}
       --top-k ${reranker.top_k}
       --relevant-same-category ${data.relevant_same_category}
       --num-queries 7
