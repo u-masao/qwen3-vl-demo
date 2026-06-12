@@ -216,14 +216,21 @@ def train_reranker(cfg: Config) -> None:
     )
     from sentence_transformers.cross_encoder.losses import BinaryCrossEntropyLoss
 
-    model = CrossEncoder(cfg.reranker.model_id, device=cfg.device)
-
+    # ハード負例マイニング（埋め込みモデルをロード→解放）を **リランカーのロードより先に** 行う。
+    # 順序を逆にすると、マイニング中に埋め込み(2B)とリランカー(2B)が VRAM に同居してピークが
+    # 膨らみ、16GB カードでは枯渇する（WSL2 では共有メモリへ退避して極端に遅くなる）。
     train_ds = _build_reranker_dataset(cfg)
+
+    model = CrossEncoder(cfg.reranker.model_id, device=cfg.device)
     loss = BinaryCrossEntropyLoss(model)
 
     # Ada では bf16、明示的に float16 指定なら fp16、CPU では混合精度なし。
     use_bf16 = cfg.device != "cpu" and cfg.dtype == "bfloat16"
     use_fp16 = cfg.device != "cpu" and cfg.dtype == "float16"
+    # 勾配チェックポイントで活性化メモリを抑える（埋め込み学習と同じ設定）。これが無いと
+    # cross-encoder（クエリ＋画像を結合する分シーケンスが長い）の活性化が 16GB を超えて
+    # VRAM 枯渇 → 退避で激遅化する（実測 ~3→18 s/it）。
+    use_gc = cfg.device != "cpu" and cfg.train.gradient_checkpointing
 
     args = CrossEncoderTrainingArguments(
         output_dir=str(cfg.output_path / "reranker_checkpoints"),
@@ -234,6 +241,8 @@ def train_reranker(cfg: Config) -> None:
         warmup_ratio=cfg.train.warmup_ratio,
         bf16=use_bf16,
         fp16=use_fp16,
+        gradient_checkpointing=use_gc,
+        gradient_checkpointing_kwargs={"use_reentrant": False} if use_gc else None,
         save_strategy="steps",
         save_steps=cfg.train.save_steps,
         save_total_limit=1,

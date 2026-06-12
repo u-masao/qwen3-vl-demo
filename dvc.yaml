@@ -138,6 +138,7 @@ stages:
       --grad-accum ${train.gradient_accumulation_steps}
       --lr ${train.learning_rate}
       --warmup-ratio ${train.warmup_ratio}
+      --gradient-checkpointing ${train.gradient_checkpointing}
       --save-steps ${train.save_steps}
       --logging-steps ${train.logging_steps}
     deps:
