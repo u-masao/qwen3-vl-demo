@@ -25,12 +25,14 @@ from __future__ import annotations
 import argparse
 import hashlib
 import logging
+from collections.abc import Callable
 
 from datasets import Dataset, Features, Value
 from datasets import Image as HFImage
 from PIL import Image
 
 from .config import Config, add_config_args, config_from_args, resolve_dtype
+from .image_cache import ImageCache, derive_seed
 from .prompts import Sample, build_captions
 
 logger = logging.getLogger(__name__)
@@ -54,8 +56,68 @@ def _generate_stub(samples: list[Sample], size: int) -> list[Image.Image]:
     return [_stub_image(s.text, size) for s in samples]
 
 
-def _generate_with_diffusers(samples: list[Sample], cfg: Config) -> list[Image.Image]:
-    """diffusers の text-to-image モデルで画像をレンダリングする（モデル非依存）。
+# プロンプト群とそれぞれの per-image シードを受け取り、画像を返すレンダラ。
+# diffusers 実装を差し替え可能にしてキャッシュのオーケストレーションを GPU なしでテストできる。
+GenerateFn = Callable[[list[str], list[int]], list[Image.Image]]
+
+
+def _render_with_cache(
+    samples: list[Sample],
+    cfg: Config,
+    cache: ImageCache,
+    generate_fn: GenerateFn,
+) -> list[Image.Image]:
+    """キャッシュを参照しつつ画像をそろえる。ミス分だけ ``generate_fn`` で生成して書き戻す。
+
+    キャッシュキーは「出力画像を一意に決める入力すべて」（モデル・プロンプト・seed・steps・
+    guidance・サイズ・dtype）から作る。全件ヒットなら ``generate_fn`` は一度も呼ばれないので、
+    呼び出し側はモデルロードを丸ごと省略できる（最大の利得）。
+    """
+    keys = [
+        cache.key(
+            model_id=cfg.image_gen.model_id,
+            prompt=s.text,
+            seed=cfg.seed,
+            steps=cfg.image_gen.num_inference_steps,
+            guidance=cfg.image_gen.guidance_scale,
+            size=cfg.data.image_size,
+            dtype=cfg.dtype,
+        )
+        for s in samples
+    ]
+
+    images: list[Image.Image | None] = [None] * len(samples)
+    miss_idx: list[int] = []
+    for i, key in enumerate(keys):
+        cached = cache.get(key)
+        if cached is None:
+            miss_idx.append(i)
+        else:
+            images[i] = cached
+
+    logger.info(
+        "  キャッシュ: ヒット %d / 全 %d 枚（生成対象 %d 枚）",
+        len(samples) - len(miss_idx),
+        len(samples),
+        len(miss_idx),
+    )
+
+    if miss_idx:
+        prompts = [samples[i].text for i in miss_idx]
+        # 各画像はプロンプト単位の決定的シードで生成する（生成順・バッチ非依存）。
+        seeds = [derive_seed(cfg.seed, p) for p in prompts]
+        rendered = generate_fn(prompts, seeds)
+        for i, img in zip(miss_idx, rendered, strict=True):
+            images[i] = img
+            cache.put(keys[i], img)
+
+    return [img for img in images if img is not None]
+
+
+def _generate_with_diffusers(
+    samples: list[Sample], cfg: Config, cache: ImageCache
+) -> list[Image.Image]:
+    """diffusers の text-to-image モデルで画像をレンダリングする（キャッシュ対応・モデル非依存）。
 
     ``AutoPipelineForText2Image`` がリポジトリの種類を自動判別するため、FLUX.2-klein でも
     他の diffusers モデルでも同じコードで動く。モデルごとの違い（ステップ数・guidance）は
@@ -64,47 +126,61 @@ def _generate_with_diffusers(samples: list[Sample], cfg: Config) -> list[Image.I
       * ``black-forest-labs/FLUX.2-klein-4B``     → steps=4, guidance=1.0（既定 / configs/default.yaml）
       * ``black-forest-labs/FLUX.2-klein-4b-fp8`` → steps=4, guidance=1.0（VRAM 節約版 / configs/flux.yaml）
 
-    diffusers / torch はここで遅延 import する。これによりスモークモード
-    （スタブ画像）では GPU 系の重い依存を一切ロードしない。
+    diffusers / torch はここで遅延 import する。これによりスモークモード（スタブ画像）や
+    キャッシュ全ヒット時には GPU 系の重い依存を一切ロードしない。
     """
     import time
 
     import torch
     from diffusers import AutoPipelineForText2Image
 
-    dtype = resolve_dtype(cfg.dtype)
-    logger.info("モデルロード開始: %s (dtype=%s)", cfg.image_gen.model_id, cfg.dtype)
-    t0 = time.monotonic()
-    pipe = AutoPipelineForText2Image.from_pretrained(
-        cfg.image_gen.model_id,
-        torch_dtype=dtype,
-    )
-    pipe = pipe.to(cfg.device)
-    pipe.set_progress_bar_config(disable=True)
-    logger.info("モデルロード完了: %.1f 秒", time.monotonic() - t0)
+    # パイプラインは最初のミス時に一度だけ遅延ロードする（全ヒットならロードしない）。
+    pipe_box: list = []
 
-    images: list[Image.Image] = []
-    bs = max(1, cfg.image_gen.batch_size)
-    total = len(samples)
-    # seed 固定の Generator で再現性を確保（同じ設定なら同じ画像が出る）。
-    generator = torch.Generator(device=cfg.device).manual_seed(cfg.seed)
-    t_batch_start = time.monotonic()
-    for start in range(0, total, bs):
-        batch = samples[start : start + bs]
-        prompts = [s.text for s in batch]
-        out = pipe(
-            prompt=prompts,
-            num_inference_steps=cfg.image_gen.num_inference_steps,
-            guidance_scale=cfg.image_gen.guidance_scale,
-            height=cfg.data.image_size,
-            width=cfg.data.image_size,
-            generator=generator,
+    def _load_pipe():
+        dtype = resolve_dtype(cfg.dtype)
+        logger.info("モデルロード開始: %s (dtype=%s)", cfg.image_gen.model_id, cfg.dtype)
+        t0 = time.monotonic()
+        pipe = AutoPipelineForText2Image.from_pretrained(
+            cfg.image_gen.model_id,
+            torch_dtype=dtype,
         )
-        images.extend(out.images)
-        done = min(start + bs, total)
-        elapsed = time.monotonic() - t_batch_start
-        logger.info("  生成 %d/%d 枚 (%.1f 秒, %.2f 枚/秒)", done, total, elapsed, done / elapsed)
-    return images
+        pipe = pipe.to(cfg.device)
+        pipe.set_progress_bar_config(disable=True)
+        logger.info("モデルロード完了: %.1f 秒", time.monotonic() - t0)
+        return pipe
+
+    def generate_fn(prompts: list[str], seeds: list[int]) -> list[Image.Image]:
+        if not pipe_box:
+            pipe_box.append(_load_pipe())
+        pipe = pipe_box[0]
+        images: list[Image.Image] = []
+        bs = max(1, cfg.image_gen.batch_size)
+        total = len(prompts)
+        t_batch_start = time.monotonic()
+        for start in range(0, total, bs):
+            batch_prompts = prompts[start : start + bs]
+            # プロンプトごとの Generator を渡し、画像を生成順・バッチ非依存で決定的にする。
+            generators = [
+                torch.Generator(device=cfg.device).manual_seed(s) for s in seeds[start : start + bs]
+            ]
+            out = pipe(
+                prompt=batch_prompts,
+                num_inference_steps=cfg.image_gen.num_inference_steps,
+                guidance_scale=cfg.image_gen.guidance_scale,
+                height=cfg.data.image_size,
+                width=cfg.data.image_size,
+                generator=generators,
+            )
+            images.extend(out.images)
+            done = min(start + bs, total)
+            elapsed = time.monotonic() - t_batch_start
+            logger.info(
+                "  生成 %d/%d 枚 (%.1f 秒, %.2f 枚/秒)", done, total, elapsed, done / elapsed
+            )
+        return images
+
+    return _render_with_cache(samples, cfg, cache, generate_fn)
 
 
 def _build_split(samples: list[Sample], images: list[Image.Image]) -> Dataset:
@@ -148,10 +224,13 @@ def generate_dataset(cfg: Config) -> None:
         train_images = _generate_stub(train_samples, cfg.data.image_size)
         eval_images = _generate_stub(eval_samples, cfg.data.image_size)
     else:
+        # 生成画像キャッシュ（同一入力の再生成・モデルロードをスキップ）。
+        cache = ImageCache(cfg.image_cache_path, enabled=cfg.image_gen.cache_enabled)
+        logger.info("  画像キャッシュ: %s", cache.root if cache.enabled else "無効")
         logger.info("train スプリット:")
-        train_images = _generate_with_diffusers(train_samples, cfg)
+        train_images = _generate_with_diffusers(train_samples, cfg, cache)
         logger.info("eval スプリット:")
-        eval_images = _generate_with_diffusers(eval_samples, cfg)
+        eval_images = _generate_with_diffusers(eval_samples, cfg, cache)
 
     train_ds = _build_split(train_samples, train_images)
     eval_ds = _build_split(eval_samples, eval_images)

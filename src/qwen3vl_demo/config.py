@@ -62,6 +62,10 @@ class ImageGenCfg:
     num_inference_steps: int = 4  # FLUX.2-klein は 4 ステップ向けに蒸留されている
     guidance_scale: float = 1.0  # FLUX.2-klein-4B の推奨値
     batch_size: int = 1  # パイプライン 1 回あたりに生成する画像枚数（VRAM 節約のため 1）
+    # 生成画像のローカルキャッシュ。True なら同一入力の再生成をスキップする。
+    cache_enabled: bool = True
+    # キャッシュ保存先（環境ごと使い捨て）。.gitignore の .cache/ 配下なので VCS 追跡されない。
+    cache_dir: str = ".cache/imggen"
 
 
 @dataclass
@@ -142,6 +146,11 @@ class Config:
     def model_path(self) -> Path:
         """ファインチューニング済み埋め込みモデル保存先の絶対パス。"""
         return self._abs(self.paths.model_dir)
+
+    @property
+    def image_cache_path(self) -> Path:
+        """生成画像キャッシュディレクトリの絶対パス。"""
+        return self._abs(self.image_gen.cache_dir)
 
     @property
     def reranker_model_path(self) -> Path:

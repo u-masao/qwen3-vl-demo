@@ -25,6 +25,8 @@ image_gen:
   num_inference_steps: 4          # FLUX.2-klein is distilled to 4 steps.
   guidance_scale: 1.0             # reference setting for the 4B model.
   batch_size: 1                   # VRAM 節約のため 1 に設定（4060 Ti 16GB での安定動作優先）。
+  cache_enabled: true             # 同一入力の再生成をスキップする生成画像キャッシュ
+  cache_dir: .cache/imggen        # 環境ごと使い捨て（.gitignore の .cache/ 配下。VCS 非追跡）
 
 embedding:
   model_id: Qwen/Qwen3-VL-Embedding-2B
