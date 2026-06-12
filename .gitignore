@@ -19,6 +19,9 @@ outputs_smoke/
 # HF caches that might land in-tree
 .cache/
 
+# Claude Code (local, per-developer)
+CLAUDE.md
+
 # Editor / OS
 .idea/
 .vscode/
