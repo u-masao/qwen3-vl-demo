@@ -1,137 +1,181 @@
+# DVC パイプライン定義。
+#
+# 設定は単一の有効ファイル `params.yaml`（`make use-default` / `make use-smoke` /
+# `make use-flux` で `params_<profile>.yaml` をコピーして切替）に集約している。
+# 各ステージの `cmd` は **自分が使う値だけ** を `${...}` で展開して CLI に渡す。DVC は
+# `dvc.lock` に展開後の cmd（例: `--epochs 1`）を記録するので、`params.yaml` の値を
+# 変えると、その値を cmd に持つステージだけが再実行される。
+#
+# このため `params:` 宣言や `config.py` の `deps` 宣言は不要（Issue #8）。どの設定変更が
+# どのステージを再実行させるかは README / docs/specification.md の対応表を参照。
+#
+# 注: このパイプラインは「本番」プロファイル（default / flux）を対象とする。smoke は
+# reranker.model_id=null でリランク系ステージが出力を生成しないため、`dvc repro` ではなく
+# `make smoke`（各ステージを `--profile smoke` で直接実行）で配線確認すること。
 stages:
   # ── データ生成 ─────────────────────────────────────────────────────────────
   generate_data:
-    foreach:
-      smoke:
-        data_dir: data_smoke
-        output_dir: outputs_smoke
-      default:
-        data_dir: data
-        output_dir: outputs
-    do:
-      cmd: uv run python -m qwen3vl_demo.generate_data --profile ${key}
-      params:
-        - configs/${key}.yaml:
-      deps:
-        - src/qwen3vl_demo/config.py
-        - src/qwen3vl_demo/generate_data.py
-        - src/qwen3vl_demo/prompts.py
-      outs:
-        - ${item.data_dir}/train
-        - ${item.data_dir}/eval
+    cmd: >
+      uv run python -m qwen3vl_demo.generate_data
+      --profile ${common.profile}
+      --seed ${common.seed}
+      --device ${common.device}
+      --dtype ${common.dtype}
+      --data-dir ${common.paths.data_dir}
+      --num-train ${data.num_train}
+      --num-eval ${data.num_eval}
+      --image-size ${data.image_size}
+      --image-model ${image_gen.model_id}
+      --steps ${image_gen.num_inference_steps}
+      --guidance-scale ${image_gen.guidance_scale}
+      --image-batch-size ${image_gen.batch_size}
+      --image-cache ${image_gen.cache_enabled}
+      --cache-dir ${image_gen.cache_dir}
+    deps:
+      - src/qwen3vl_demo/generate_data.py
+      - src/qwen3vl_demo/image_cache.py
+      - src/qwen3vl_demo/prompts.py
+    outs:
+      - ${common.paths.data_dir}/train
+      - ${common.paths.data_dir}/eval
 
   # ── ベースライン評価 ────────────────────────────────────────────────────────
   eval_base:
-    foreach:
-      smoke:
-        data_dir: data_smoke
-        output_dir: outputs_smoke
-      default:
-        data_dir: data
-        output_dir: outputs
-    do:
-      cmd: uv run python -m qwen3vl_demo.evaluate --profile ${key} --label base
-      params:
-        - configs/${key}.yaml:
-      deps:
-        - src/qwen3vl_demo/config.py
-        - src/qwen3vl_demo/evaluate.py
-        - src/qwen3vl_demo/models.py
-        - ${item.data_dir}/eval
-      metrics:
-        - ${item.output_dir}/metrics_base.json:
-            cache: false
+    cmd: >
+      uv run python -m qwen3vl_demo.evaluate
+      --profile ${common.profile}
+      --data-dir ${common.paths.data_dir}
+      --output-dir ${common.paths.output_dir}
+      --embedding-model ${embedding.model_id}
+      --attn-impl ${embedding.attn_implementation}
+      --max-pixels ${embedding.max_pixels}
+      --query-prompt-name ${embedding.query_prompt_name}
+      --label base
+    deps:
+      - src/qwen3vl_demo/evaluate.py
+      - src/qwen3vl_demo/models.py
+      - ${common.paths.data_dir}/eval
+    metrics:
+      - ${common.paths.output_dir}/metrics_base.json:
+          cache: false
 
   # ── 埋め込みモデルのファインチューニング ────────────────────────────────────
   train:
-    foreach:
-      smoke:
-        data_dir: data_smoke
-        output_dir: outputs_smoke
-      default:
-        data_dir: data
-        output_dir: outputs
-    do:
-      cmd: uv run python -m qwen3vl_demo.train --profile ${key}
-      params:
-        - configs/${key}.yaml:
-      deps:
-        - src/qwen3vl_demo/config.py
-        - src/qwen3vl_demo/evaluate.py
-        - src/qwen3vl_demo/models.py
-        - src/qwen3vl_demo/train.py
-        - ${item.data_dir}/train
-        - ${item.data_dir}/eval
-      outs:
-        - ${item.output_dir}/model
+    cmd: >
+      uv run python -m qwen3vl_demo.train
+      --profile ${common.profile}
+      --seed ${common.seed}
+      --device ${common.device}
+      --dtype ${common.dtype}
+      --data-dir ${common.paths.data_dir}
+      --output-dir ${common.paths.output_dir}
+      --model-dir ${common.paths.model_dir}
+      --embedding-model ${embedding.model_id}
+      --attn-impl ${embedding.attn_implementation}
+      --max-pixels ${embedding.max_pixels}
+      --query-prompt-name ${embedding.query_prompt_name}
+      --epochs ${train.epochs}
+      --batch-size ${train.per_device_batch_size}
+      --grad-accum ${train.gradient_accumulation_steps}
+      --lr ${train.learning_rate}
+      --warmup-ratio ${train.warmup_ratio}
+      --gradient-checkpointing ${train.gradient_checkpointing}
+      --eval-steps ${train.eval_steps}
+      --save-steps ${train.save_steps}
+      --logging-steps ${train.logging_steps}
+    deps:
+      - src/qwen3vl_demo/evaluate.py
+      - src/qwen3vl_demo/models.py
+      - src/qwen3vl_demo/train.py
+      - ${common.paths.data_dir}/train
+      - ${common.paths.data_dir}/eval
+    outs:
+      - ${common.paths.model_dir}
 
   # ── ファインチューニング後評価（埋め込みのみ）──────────────────────────────
   eval:
-    foreach:
-      smoke:
-        data_dir: data_smoke
-        output_dir: outputs_smoke
-      default:
-        data_dir: data
-        output_dir: outputs
-    do:
-      cmd: uv run python -m qwen3vl_demo.evaluate --profile ${key} --finetuned
-      params:
-        - configs/${key}.yaml:
-      deps:
-        - src/qwen3vl_demo/config.py
-        - src/qwen3vl_demo/evaluate.py
-        - src/qwen3vl_demo/models.py
-        - ${item.data_dir}/eval
-        - ${item.output_dir}/model
-      metrics:
-        - ${item.output_dir}/metrics_finetuned.json:
-            cache: false
+    cmd: >
+      uv run python -m qwen3vl_demo.evaluate
+      --profile ${common.profile}
+      --data-dir ${common.paths.data_dir}
+      --output-dir ${common.paths.output_dir}
+      --model-dir ${common.paths.model_dir}
+      --embedding-model ${embedding.model_id}
+      --attn-impl ${embedding.attn_implementation}
+      --max-pixels ${embedding.max_pixels}
+      --query-prompt-name ${embedding.query_prompt_name}
+      --finetuned
+    deps:
+      - src/qwen3vl_demo/evaluate.py
+      - src/qwen3vl_demo/models.py
+      - ${common.paths.data_dir}/eval
+      - ${common.paths.model_dir}
+    metrics:
+      - ${common.paths.output_dir}/metrics_finetuned.json:
+          cache: false
 
   # ── リランカーのファインチューニング ────────────────────────────────────────
-  # default のみ実行（smoke は reranker.model_id=null のため学習をスキップ＝出力なし）。
-  # Hard Negative Mining で FT 済み埋め込みモデル（outputs/model）を使うため deps に含める。
+  # Hard Negative Mining で FT 済み埋め込みモデル（model_dir）を使うため deps に含める。
   train_reranker:
-    cmd: uv run python -m qwen3vl_demo.train_reranker --profile default
-    params:
-      - configs/default.yaml:
+    cmd: >
+      uv run python -m qwen3vl_demo.train_reranker
+      --profile ${common.profile}
+      --seed ${common.seed}
+      --device ${common.device}
+      --dtype ${common.dtype}
+      --data-dir ${common.paths.data_dir}
+      --output-dir ${common.paths.output_dir}
+      --model-dir ${common.paths.model_dir}
+      --embedding-model ${embedding.model_id}
+      --attn-impl ${embedding.attn_implementation}
+      --max-pixels ${embedding.max_pixels}
+      --query-prompt-name ${embedding.query_prompt_name}
+      --reranker-model ${reranker.model_id}
+      --reranker-dir ${reranker.model_dir}
+      --num-negatives ${reranker.num_negatives}
+      --epochs ${train.epochs}
+      --batch-size ${train.per_device_batch_size}
+      --grad-accum ${train.gradient_accumulation_steps}
+      --lr ${train.learning_rate}
+      --warmup-ratio ${train.warmup_ratio}
+      --save-steps ${train.save_steps}
+      --logging-steps ${train.logging_steps}
     deps:
-      - src/qwen3vl_demo/config.py
       - src/qwen3vl_demo/models.py
       - src/qwen3vl_demo/train_reranker.py
-      - data/train
-      - outputs/model
+      - ${common.paths.data_dir}/train
+      - ${common.paths.model_dir}
     outs:
-      - outputs/reranker
+      - ${reranker.model_dir}
 
   # ── 6 パターン評価（埋め込み{base,ft} × リランカー{base,ft,none}）＋リランク事例 ──
   # base 埋め込み/リランカーは HF からダウンロード、ft はそれぞれの学習成果物を使う。
   # --num-queries 7: ペルソナが 7 種類なので全ペルソナ分の事例を出力する。
-  rerank_default:
-    cmd: uv run python -m qwen3vl_demo.rerank --profile default --num-queries 7
-    params:
-      - configs/default.yaml:
+  rerank:
+    cmd: >
+      uv run python -m qwen3vl_demo.rerank
+      --profile ${common.profile}
+      --device ${common.device}
+      --data-dir ${common.paths.data_dir}
+      --output-dir ${common.paths.output_dir}
+      --model-dir ${common.paths.model_dir}
+      --embedding-model ${embedding.model_id}
+      --attn-impl ${embedding.attn_implementation}
+      --max-pixels ${embedding.max_pixels}
+      --query-prompt-name ${embedding.query_prompt_name}
+      --reranker-model ${reranker.model_id}
+      --reranker-dir ${reranker.model_dir}
+      --top-k ${reranker.top_k}
+      --relevant-same-category ${data.relevant_same_category}
+      --num-queries 7
     deps:
-      - src/qwen3vl_demo/config.py
       - src/qwen3vl_demo/models.py
       - src/qwen3vl_demo/rerank.py
-      - data/eval
-      - outputs/model
-      - outputs/reranker
+      - ${common.paths.data_dir}/eval
+      - ${common.paths.model_dir}
+      - ${reranker.model_dir}
     outs:
-      - outputs/rerank_examples.json
+      - ${common.paths.output_dir}/rerank_examples.json
     metrics:
-      - outputs/rerank_metrics.json:
+      - ${common.paths.output_dir}/rerank_metrics.json:
           cache: false
-
-  # ── smoke の配線確認用（reranker=null のためリランクはスキップ・出力なし）──
-  rerank_smoke:
-    cmd: uv run python -m qwen3vl_demo.rerank --profile smoke
-    params:
-      - configs/smoke.yaml:
-    deps:
-      - src/qwen3vl_demo/config.py
-      - src/qwen3vl_demo/models.py
-      - src/qwen3vl_demo/rerank.py
-      - data_smoke/eval
-      - outputs_smoke/model

@@ -3,7 +3,7 @@
 prompts.py が作ったキャプション 1 文ごとに、対応する画像を 1 枚レンダリングする:
 
   * 通常（GPU）  → diffusers の text-to-image モデルで実生成。``image_gen.model_id`` で
-                   FLUX.2-klein-4B（既定）/ fp8 版（configs/flux.yaml）などを切り替えられる
+                   FLUX.2-klein-4B（既定）/ fp8 版（params_flux.yaml）などを切り替えられる
   * ``smoke``    → 安価な合成スタブ画像（モデルのダウンロード不要・CPU 可）
 
 結果は ``datasets.Dataset`` の 2 スプリットとして ``<data_dir>/train`` と
@@ -31,7 +31,15 @@ from datasets import Dataset, Features, Value
 from datasets import Image as HFImage
 from PIL import Image
 
-from .config import Config, add_config_args, config_from_args, resolve_dtype
+from .config import (
+    Config,
+    add_common_args,
+    add_config_args,
+    add_data_args,
+    add_image_gen_args,
+    config_from_args,
+    resolve_dtype,
+)
 from .image_cache import ImageCache, derive_seed
 from .prompts import Sample, build_captions
 
@@ -123,8 +131,8 @@ def _generate_with_diffusers(
     他の diffusers モデルでも同じコードで動く。モデルごとの違い（ステップ数・guidance）は
     すべて設定（``image_gen.num_inference_steps`` / ``guidance_scale``）で吸収する:
 
-      * ``black-forest-labs/FLUX.2-klein-4B``     → steps=4, guidance=1.0（既定 / configs/default.yaml）
-      * ``black-forest-labs/FLUX.2-klein-4b-fp8`` → steps=4, guidance=1.0（VRAM 節約版 / configs/flux.yaml）
+      * ``black-forest-labs/FLUX.2-klein-4B``     → steps=4, guidance=1.0（既定 / params_default.yaml）
+      * ``black-forest-labs/FLUX.2-klein-4b-fp8`` → steps=4, guidance=1.0（VRAM 節約版 / params_flux.yaml）
 
     diffusers / torch はここで遅延 import する。これによりスモークモード（スタブ画像）や
     キャッシュ全ヒット時には GPU 系の重い依存を一切ロードしない。
@@ -255,6 +263,9 @@ def main() -> None:
     )
     parser = argparse.ArgumentParser(description="合成キャプション付き画像データセットを生成する。")
     add_config_args(parser)
+    add_common_args(parser)
+    add_data_args(parser)
+    add_image_gen_args(parser)
     args = parser.parse_args()
     cfg = config_from_args(args)
     generate_dataset(cfg)

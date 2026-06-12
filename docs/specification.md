@@ -29,7 +29,7 @@
 
 | 役割 | モデル | ライセンス | 備考 |
 |---|---|---|---|
-| 画像生成（`default`） | [`black-forest-labs/FLUX.2-klein-4B`](https://huggingface.co/black-forest-labs/FLUX.2-klein-4B) | Apache-2.0 | 4 ステップ蒸留・guidance=1.0。`configs/default.yaml` |
+| 画像生成（`default`） | [`black-forest-labs/FLUX.2-klein-4B`](https://huggingface.co/black-forest-labs/FLUX.2-klein-4B) | Apache-2.0 | 4 ステップ蒸留・guidance=1.0。`params_default.yaml` |
 | 埋め込み（FT 対象） | [`Qwen/Qwen3-VL-Embedding-2B`](https://huggingface.co/Qwen/Qwen3-VL-Embedding-2B) | Apache-2.0 | テキスト・画像を同一空間に埋め込む |
 | リランカー（FT＋推論） | [`Qwen/Qwen3-VL-Reranker-2B`](https://huggingface.co/Qwen/Qwen3-VL-Reranker-2B) | Apache-2.0 | cross-encoder。クエリ×文書を精密スコア |
 | 埋め込み（smoke 代替） | `sentence-transformers/clip-ViT-B-32` | MIT | 小型・CPU 可。配線確認専用 |
@@ -62,20 +62,22 @@
 
 ---
 
-## 4. 設定ファイル仕様（`configs/*.yaml`）
+## 4. 設定ファイル仕様（`params*.yaml`）
 
-設定はすべて YAML に集約し、`config.py` の dataclass にマッピングされます。
-パスはリポジトリルートからの相対で記述します。
+設定はすべて YAML に集約し、`config.py` の dataclass にマッピングされます。有効プロファイルは
+`params.yaml`（`make use-default` / `use-smoke` / `use-flux` が `params_<profile>.yaml` をコピー）。
+first-level キー（`common` / `data` / `image_gen` / `embedding` / `reranker` / `train`）で
+セクション分けします。パスはリポジトリルートからの相対で記述します。
 
 | セクション.キー | 型 | default 値 | 意味 |
 |---|---|---|---|
-| `profile` | str | `default` | プロファイル名（`default`/`smoke`） |
-| `seed` | int | `42` | 乱数シード（データ生成・学習の再現性） |
-| `device` | str | `cuda` | `cuda` / `cpu` |
-| `dtype` | str | `bfloat16` | `float32` / `float16` / `bfloat16` |
-| `paths.data_dir` | str | `data` | データセット保存先 |
-| `paths.output_dir` | str | `outputs` | メトリクス等の出力先 |
-| `paths.model_dir` | str | `outputs/model` | FT 済みモデル保存先 |
+| `common.profile` | str | `default` | プロファイル名（`default`/`smoke`/`flux`） |
+| `common.seed` | int | `42` | 乱数シード（データ生成・学習の再現性） |
+| `common.device` | str | `cuda` | `cuda` / `cpu` |
+| `common.dtype` | str | `bfloat16` | `float32` / `float16` / `bfloat16` |
+| `common.paths.data_dir` | str | `data` | データセット保存先 |
+| `common.paths.output_dir` | str | `outputs` | メトリクス等の出力先 |
+| `common.paths.model_dir` | str | `outputs/model` | FT 済みモデル保存先 |
 | `data.num_train` | int | `500` | 学習ペア数 |
 | `data.num_eval` | int | `200` | 評価ペア数 |
 | `data.image_size` | int | `512` | 生成画像の一辺 px |
@@ -102,8 +104,15 @@
 
 ## 5. CLI 仕様
 
-全エントリポイント共通で `--config PATH`（優先）と `--profile NAME`（`configs/NAME.yaml`、
-既定 `default`。`smoke` / `flux` などの任意プリセット名も可）を受け付けます。
+全エントリポイント共通で、ベース設定の選択 `--config PATH`（優先）／ `--profile NAME`
+（`params_NAME.yaml`。`default` / `smoke` / `flux`。未指定なら有効な `params.yaml`）と、
+セクション別の **オーバーライド引数**（`--seed` / `--num-train` / `--epochs` / `--lr` /
+`--embedding-model` など）を受け付けます。オーバーライドはベース YAML の該当値だけを上書きします。
+
+DVC パイプラインはこのオーバーライド引数を使い、各ステージの `cmd` が自分が使う値だけを
+`${...}` で展開して渡します。展開後の cmd が `dvc.lock` に記録されるため、ある値を変えると
+その値を cmd に持つステージ（と下流）だけが再実行されます（`params:` 宣言は不要）。再実行の
+対応は README の表を参照。
 
 | コマンド | 追加引数 | 説明 |
 |---|---|---|

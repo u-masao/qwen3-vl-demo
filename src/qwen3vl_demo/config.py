@@ -2,14 +2,31 @@
 
 設計方針
 --------
-* 設定は **すべて YAML ファイル**（``configs/default.yaml`` / ``configs/smoke.yaml``）に集約し、
-  コード中にマジックナンバーを散らさない。これにより DVC の ``params`` で設定差分を
-  追跡でき、実験の再現性が保てる。
-* YAML はセクションごとに dataclass へマッピングする。dataclass にすることで
-  IDE 補完・型チェックが効き、``cfg.train.epochs`` のように安全にアクセスできる。
-* すべてのエントリーポイント（generate_data / evaluate / train / rerank）は共通で
-  ``--config PATH`` と ``--profile {default,smoke}`` を受け取る。``--profile`` は
-  ``configs/<profile>.yaml`` を指すショートカット、``--config`` はその上書き。
+* 設定は **すべて YAML（``params.yaml`` および ``params_<profile>.yaml``）** に集約し、
+  コード中にマジックナンバーを散らさない。``params.yaml`` がパイプライン実行時の
+  「有効プロファイル」で、``make use-default`` / ``make use-smoke`` /
+  ``make use-flux`` が ``params_<profile>.yaml`` を ``params.yaml`` にコピーして切り替える。
+* YAML は first-level キー（``common`` / ``data`` / ``image_gen`` / ``embedding`` /
+  ``reranker`` / ``train``）でセクション分けし、それぞれ dataclass へマッピングする。
+  dataclass にすることで IDE 補完・型チェックが効き、``cfg.train.epochs`` のように
+  安全にアクセスできる。
+* DVC パイプラインでは、各ステージの ``cmd`` が **自分が使う値だけ** を ``${...}``
+  展開で CLI 引数として受け取る（:func:`add_*_args` のオーバーライド引数群）。
+  値の変化が cmd 文字列に反映され、その値を使うステージだけが再実行される。
+  そのため ``params.yaml`` / ``config.py`` を DVC の ``deps`` や ``params:`` に
+  宣言する必要がない（Issue #8）。
+
+設定の解決順序
+--------------
+:func:`config_from_args` は次の順で :class:`Config` を組み立てる。
+
+1. ベース YAML を読む。``--config PATH`` 指定があればそれ、なければ ``--profile NAME``
+   に対応する ``params_<NAME>.yaml``、それも無指定なら有効な ``params.yaml``。
+2. CLI のオーバーライド引数（``--epochs`` 等、未指定なら無効）で個別の値を上書きする。
+
+DVC のステージはすべての必要値を ``${...}`` で明示的に渡すため、ベース YAML の値は
+完全に上書きされる。人手の実行（``make smoke`` 等）はオーバーライドを与えず、
+ベース YAML の値をそのまま使う。
 
 パスの扱い
 ----------
@@ -30,12 +47,18 @@ import yaml
 # このファイルは src/qwen3vl_demo/config.py にあるので、3 つ上がリポジトリルート。
 # （parents[0]=qwen3vl_demo, parents[1]=src, parents[2]=リポジトリルート）
 REPO_ROOT = Path(__file__).resolve().parents[2]
-CONFIG_DIR = REPO_ROOT / "configs"
+
+# 有効プロファイルの設定ファイル。``make use-<profile>`` がここへコピーする。
+DEFAULT_PARAMS = REPO_ROOT / "params.yaml"
+
+# 「オーバーライド未指定」を表すセンチネル。``None`` 自体が有効な上書き値（max_pixels=null
+# などを明示的に None にしたいケース）なので、``default=None`` では「未指定」と区別できない。
+_UNSET = object()
 
 
 @dataclass
 class Paths:
-    """成果物の出力先ディレクトリ群（YAML の ``paths`` セクションに対応）。"""
+    """成果物の出力先ディレクトリ群（YAML の ``common.paths`` セクションに対応）。"""
 
     data_dir: str = "data"  # 生成したデータセット（train/eval）の保存先
     output_dir: str = "outputs"  # メトリクス JSON・リランク結果などの出力先
@@ -174,17 +197,21 @@ def _build(section_cls, data: dict[str, Any] | None):
 
 
 def load_config(path: str | Path) -> Config:
-    """YAML 設定ファイルを読み込み :class:`Config` を返す。"""
+    """YAML 設定ファイルを読み込み :class:`Config` を返す。
+
+    YAML は first-level キー構成（``common`` にトップレベルのスカラと ``paths``、
+    残りはセクションごと）を想定する。
+    """
     with open(path, encoding="utf-8") as fh:
         raw = yaml.safe_load(fh) or {}
 
-    # トップレベルのスカラ値はそのまま、各セクションは _build で dataclass 化する。
+    common = raw.get("common") or {}
     return Config(
-        profile=raw.get("profile", "default"),
-        seed=raw.get("seed", 42),
-        device=raw.get("device", "cuda"),
-        dtype=raw.get("dtype", "bfloat16"),
-        paths=_build(Paths, raw.get("paths")),
+        profile=common.get("profile", "default"),
+        seed=common.get("seed", 42),
+        device=common.get("device", "cuda"),
+        dtype=common.get("dtype", "bfloat16"),
+        paths=_build(Paths, common.get("paths")),
         data=_build(DataCfg, raw.get("data")),
         image_gen=_build(ImageGenCfg, raw.get("image_gen")),
         embedding=_build(EmbeddingCfg, raw.get("embedding")),
@@ -193,8 +220,41 @@ def load_config(path: str | Path) -> Config:
     )
 
 
+# --- CLI 引数 ---------------------------------------------------------------
+#
+# ベース選択（--config / --profile）と、セクション別のオーバーライド引数群に分ける。
+# 各エントリポイントは自分が使うセクションの ``add_*_args`` だけを呼べばよい。DVC の
+# ステージはそのセクションの値を ``${...}`` で渡す。:func:`config_from_args` がベース
+# YAML を読み、与えられたオーバーライドだけを適用する。
+
+
+def _nullable_int(s: str) -> int | None:
+    """"none" / "null" / "" を None に、その他を int にする（DVC の null 展開対策）。"""
+    return None if s.strip().lower() in ("none", "null", "") else int(s)
+
+
+def _nullable_str(s: str) -> str | None:
+    """"none" / "null" / "" を None に、その他をそのまま返す（DVC の null 展開対策）。"""
+    return None if s.strip().lower() in ("none", "null", "") else s
+
+
+def _parse_bool(s: str) -> bool:
+    """真偽値を表す文字列を bool にする。
+
+    boolean のオーバーライドは ``--flag true`` のように **値指定** で受け取る。こうすると
+    DVC のステージ ``cmd`` で ``--gradient-checkpointing ${train.gradient_checkpointing}``
+    のように ``${...}`` 展開した値（True / False）をそのまま渡せる。
+    """
+    v = s.strip().lower()
+    if v in ("true", "1", "yes", "y", "on"):
+        return True
+    if v in ("false", "0", "no", "n", "off"):
+        return False
+    raise argparse.ArgumentTypeError(f"真偽値として解釈できません: {s!r}")
+
+
 def add_config_args(parser: argparse.ArgumentParser) -> None:
-    """共通の ``--config`` / ``--profile`` 引数をパーサに追加する。"""
+    """ベース設定の選択引数（``--config`` / ``--profile``）を追加する。"""
     parser.add_argument(
         "--config",
         type=str,
@@ -204,20 +264,169 @@ def add_config_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--profile",
         type=str,
-        default="default",
-        help="configs/<profile>.yaml を選ぶショートカット（例: default / smoke / flux、既定: default）。",
+        default=None,
+        help=(
+            "params_<profile>.yaml を選ぶショートカット（例: default / smoke / flux）。"
+            "未指定なら有効な params.yaml を読む。"
+        ),
     )
 
 
+def add_common_args(parser: argparse.ArgumentParser) -> None:
+    """``common`` セクションのオーバーライド引数（seed / device / dtype / paths）。"""
+    g = parser.add_argument_group("common overrides")
+    g.add_argument("--seed", type=int, default=_UNSET, help="乱数シード（common.seed）。")
+    g.add_argument("--device", type=str, default=_UNSET, help="cuda / cpu（common.device）。")
+    g.add_argument("--dtype", type=str, default=_UNSET, help="float32 / float16 / bfloat16（common.dtype）。")
+    g.add_argument("--data-dir", type=str, default=_UNSET, help="データセット出力先（common.paths.data_dir）。")
+    g.add_argument("--output-dir", type=str, default=_UNSET, help="出力先（common.paths.output_dir）。")
+    g.add_argument("--model-dir", type=str, default=_UNSET, help="FT 済み埋め込みモデル保存先（common.paths.model_dir）。")
+
+
+def add_data_args(parser: argparse.ArgumentParser) -> None:
+    """``data`` セクションのオーバーライド引数。"""
+    g = parser.add_argument_group("data overrides")
+    g.add_argument("--num-train", type=int, default=_UNSET, help="学習用ペア数（data.num_train）。")
+    g.add_argument("--num-eval", type=int, default=_UNSET, help="評価用ペア数（data.num_eval）。")
+    g.add_argument("--image-size", type=int, default=_UNSET, help="生成画像の一辺ピクセル数（data.image_size）。")
+    g.add_argument(
+        "--relevant-same-category",
+        type=_parse_bool,
+        default=_UNSET,
+        metavar="BOOL",
+        help="同カテゴリ画像も正解扱いにするか（data.relevant_same_category）。",
+    )
+
+
+def add_image_gen_args(parser: argparse.ArgumentParser) -> None:
+    """``image_gen`` セクションのオーバーライド引数。"""
+    g = parser.add_argument_group("image_gen overrides")
+    g.add_argument("--image-model", type=str, default=_UNSET, help="画像生成モデル ID / 'stub'（image_gen.model_id）。")
+    g.add_argument("--steps", type=int, default=_UNSET, help="推論ステップ数（image_gen.num_inference_steps）。")
+    g.add_argument("--guidance-scale", type=float, default=_UNSET, help="ガイダンススケール（image_gen.guidance_scale）。")
+    g.add_argument("--image-batch-size", type=int, default=_UNSET, help="生成バッチサイズ（image_gen.batch_size）。")
+    g.add_argument(
+        "--image-cache",
+        type=_parse_bool,
+        default=_UNSET,
+        metavar="BOOL",
+        help="生成画像キャッシュの有効/無効（image_gen.cache_enabled）。",
+    )
+    g.add_argument("--cache-dir", type=str, default=_UNSET, help="生成画像キャッシュ保存先（image_gen.cache_dir）。")
+
+
+def add_embedding_args(parser: argparse.ArgumentParser) -> None:
+    """``embedding`` セクションのオーバーライド引数。"""
+    g = parser.add_argument_group("embedding overrides")
+    g.add_argument("--embedding-model", type=str, default=_UNSET, help="埋め込みモデル ID（embedding.model_id）。")
+    g.add_argument("--attn-impl", type=str, default=_UNSET, help="attention 実装（embedding.attn_implementation）。")
+    g.add_argument("--max-pixels", type=_nullable_int, default=_UNSET, help="画像トークン上限 / none（embedding.max_pixels）。")
+    g.add_argument("--query-prompt-name", type=_nullable_str, default=_UNSET, help="クエリ instruction 名 / none（embedding.query_prompt_name）。")
+
+
+def add_reranker_args(parser: argparse.ArgumentParser) -> None:
+    """``reranker`` セクションのオーバーライド引数。"""
+    g = parser.add_argument_group("reranker overrides")
+    g.add_argument("--reranker-model", type=_nullable_str, default=_UNSET, help="リランカーモデル ID / none（reranker.model_id）。")
+    g.add_argument("--top-k", type=int, default=_UNSET, help="リランク対象の上位件数（reranker.top_k）。")
+    g.add_argument("--reranker-dir", type=str, default=_UNSET, help="FT 済みリランカー保存先（reranker.model_dir）。")
+    g.add_argument("--num-negatives", type=int, default=_UNSET, help="リランカー学習の負例数（reranker.num_negatives）。")
+
+
+def add_train_args(parser: argparse.ArgumentParser) -> None:
+    """``train`` セクションのオーバーライド引数。"""
+    g = parser.add_argument_group("train overrides")
+    g.add_argument("--epochs", type=int, default=_UNSET, help="エポック数（train.epochs）。")
+    g.add_argument("--batch-size", type=int, default=_UNSET, help="デバイスあたりバッチサイズ（train.per_device_batch_size）。")
+    g.add_argument("--grad-accum", type=int, default=_UNSET, help="勾配累積ステップ（train.gradient_accumulation_steps）。")
+    g.add_argument("--lr", type=float, default=_UNSET, help="学習率（train.learning_rate）。")
+    g.add_argument("--warmup-ratio", type=float, default=_UNSET, help="ウォームアップ比率（train.warmup_ratio）。")
+    g.add_argument(
+        "--gradient-checkpointing",
+        type=_parse_bool,
+        default=_UNSET,
+        metavar="BOOL",
+        help="勾配チェックポイントの有効/無効（train.gradient_checkpointing）。",
+    )
+    g.add_argument("--eval-steps", type=int, default=_UNSET, help="評価間隔ステップ（train.eval_steps）。")
+    g.add_argument("--save-steps", type=int, default=_UNSET, help="保存間隔ステップ（train.save_steps）。")
+    g.add_argument("--logging-steps", type=int, default=_UNSET, help="ログ間隔ステップ（train.logging_steps）。")
+
+
+# オーバーライド引数の dest → (Config 上の親オブジェクトを返す関数, 属性名) の対応表。
+def _override_targets(cfg: Config):
+    return {
+        "seed": (cfg, "seed"),
+        "device": (cfg, "device"),
+        "dtype": (cfg, "dtype"),
+        "data_dir": (cfg.paths, "data_dir"),
+        "output_dir": (cfg.paths, "output_dir"),
+        "model_dir": (cfg.paths, "model_dir"),
+        "num_train": (cfg.data, "num_train"),
+        "num_eval": (cfg.data, "num_eval"),
+        "image_size": (cfg.data, "image_size"),
+        "relevant_same_category": (cfg.data, "relevant_same_category"),
+        "image_model": (cfg.image_gen, "model_id"),
+        "steps": (cfg.image_gen, "num_inference_steps"),
+        "guidance_scale": (cfg.image_gen, "guidance_scale"),
+        "image_batch_size": (cfg.image_gen, "batch_size"),
+        "image_cache": (cfg.image_gen, "cache_enabled"),
+        "cache_dir": (cfg.image_gen, "cache_dir"),
+        "embedding_model": (cfg.embedding, "model_id"),
+        "attn_impl": (cfg.embedding, "attn_implementation"),
+        "max_pixels": (cfg.embedding, "max_pixels"),
+        "query_prompt_name": (cfg.embedding, "query_prompt_name"),
+        "reranker_model": (cfg.reranker, "model_id"),
+        "top_k": (cfg.reranker, "top_k"),
+        "reranker_dir": (cfg.reranker, "model_dir"),
+        "num_negatives": (cfg.reranker, "num_negatives"),
+        "epochs": (cfg.train, "epochs"),
+        "batch_size": (cfg.train, "per_device_batch_size"),
+        "grad_accum": (cfg.train, "gradient_accumulation_steps"),
+        "lr": (cfg.train, "learning_rate"),
+        "warmup_ratio": (cfg.train, "warmup_ratio"),
+        "gradient_checkpointing": (cfg.train, "gradient_checkpointing"),
+        "eval_steps": (cfg.train, "eval_steps"),
+        "save_steps": (cfg.train, "save_steps"),
+        "logging_steps": (cfg.train, "logging_steps"),
+    }
+
+
+def _apply_overrides(cfg: Config, args: argparse.Namespace) -> None:
+    """args 上に存在し、かつ実際に指定されたオーバーライド引数を cfg に反映する。
+
+    引数群（``add_*_args``）を呼んでいないエントリポイントでは該当 dest が存在しないため
+    ``getattr(..., _UNSET)`` で安全に無視する。``--profile`` で指定したプロファイル名は
+    cfg.profile を上書きする（is_smoke 判定やラベルに使う）。
+    """
+    profile = getattr(args, "profile", None)
+    if profile:
+        cfg.profile = profile
+
+    for dest, (obj, attr) in _override_targets(cfg).items():
+        val = getattr(args, dest, _UNSET)
+        if val is not _UNSET:
+            setattr(obj, attr, val)
+
+
 def config_from_args(args: argparse.Namespace) -> Config:
-    """パース済み引数から :class:`Config` を解決する（--config が --profile に優先）。"""
-    if args.config:
+    """パース済み引数から :class:`Config` を解決する。
+
+    ベース YAML（``--config`` > ``--profile`` の ``params_<profile>.yaml`` > 有効な
+    ``params.yaml``）を読み、CLI のオーバーライド引数を適用して返す。
+    """
+    if getattr(args, "config", None):
         path = Path(args.config)
+    elif getattr(args, "profile", None):
+        path = REPO_ROOT / f"params_{args.profile}.yaml"
     else:
-        path = CONFIG_DIR / f"{args.profile}.yaml"
+        path = DEFAULT_PARAMS
     if not path.exists():
         raise FileNotFoundError(f"設定ファイルが見つかりません: {path}")
-    return load_config(path)
+
+    cfg = load_config(path)
+    _apply_overrides(cfg, args)
+    return cfg
 
 
 def resolve_dtype(name: str):

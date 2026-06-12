@@ -1,15 +1,19 @@
 # Default profile: local RTX 4060 Ti 16GB (Ada), bf16.
 # This is the "real" run: FLUX.2-klein data generation + Qwen3-VL fine-tuning.
-profile: default
-
-seed: 42
-device: cuda
-dtype: bfloat16  # Ada supports bf16 natively; more stable than fp16 for training.
-
-paths:
-  data_dir: data
-  output_dir: outputs
-  model_dir: outputs/model        # where the fine-tuned embedding model is saved
+#
+# This file is the source of truth for the `default` profile. To run the DVC
+# pipeline with it, make it the active `params.yaml`:  `make use-default`
+# (which just copies this file to params.yaml). See dvc.yaml / README for how
+# each value flows into the stages' `cmd` via ${...} substitution.
+common:
+  profile: default
+  seed: 42
+  device: cuda
+  dtype: bfloat16          # Ada supports bf16 natively; more stable than fp16 for training.
+  paths:
+    data_dir: data
+    output_dir: outputs
+    model_dir: outputs/model   # where the fine-tuned embedding model is saved
 
 data:
   num_train: 500

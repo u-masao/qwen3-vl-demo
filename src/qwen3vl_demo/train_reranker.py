@@ -31,7 +31,15 @@ import random
 from datasets import Dataset, Features, Value, load_from_disk
 from datasets import Image as HFImage
 
-from .config import Config, add_config_args, config_from_args
+from .config import (
+    Config,
+    add_common_args,
+    add_config_args,
+    add_embedding_args,
+    add_reranker_args,
+    add_train_args,
+    config_from_args,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -262,6 +270,10 @@ def main() -> None:
     )
     parser = argparse.ArgumentParser(description="Qwen3-VL リランカーをファインチューニングする。")
     add_config_args(parser)
+    add_common_args(parser)
+    add_embedding_args(parser)
+    add_reranker_args(parser)
+    add_train_args(parser)
     args = parser.parse_args()
     cfg = config_from_args(args)
     train_reranker(cfg)

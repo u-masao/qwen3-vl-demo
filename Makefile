@@ -5,21 +5,41 @@
 #   make all                   # full pipeline (GPU: FLUX.2-klein + Qwen3-VL)
 #   make smoke                 # CPU wiring check (stub images + small CLIP model)
 #   make data PROFILE=default  # run a single stage with an explicit profile
+#   make use-smoke             # activate the smoke profile for `dvc repro`
 #
-# PROFILE selects configs/<PROFILE>.yaml (default: default).
+# Two ways to pick a profile:
+#   * Direct runs (`make data`/`smoke`/...): PROFILE selects params_<PROFILE>.yaml
+#     (default: default), passed to each stage as `--profile <PROFILE>`.
+#   * DVC pipeline (`dvc repro`): it always reads the active `params.yaml`. Switch
+#     it with `make use-default|use-smoke|use-flux` (copies params_<x>.yaml there).
 
 PROFILE ?= default
 RUN := uv run
 PY := $(RUN) python -m qwen3vl_demo
 
-.PHONY: setup data eval-base train eval train-reranker rerank all figures smoke test lint clean help
+.PHONY: setup data eval-base train eval train-reranker rerank all figures smoke \
+        use-default use-smoke use-flux test lint clean help
 
 help:
 	@echo "Targets: setup | data | eval-base | train | eval | train-reranker | rerank | all | figures | smoke | test | lint | clean"
-	@echo "Override the profile with PROFILE=default|smoke (current: $(PROFILE))"
+	@echo "Profile switch (DVC): use-default | use-smoke | use-flux  (copies params_<x>.yaml -> params.yaml)"
+	@echo "Override direct-run profile with PROFILE=default|smoke|flux (current: $(PROFILE))"
 
 setup:
 	uv sync
+
+# ── Profile activation for the DVC pipeline (dvc repro reads params.yaml) ──
+use-default:
+	cp params_default.yaml params.yaml
+	@echo "Activated 'default' profile (params.yaml <- params_default.yaml)."
+
+use-smoke:
+	cp params_smoke.yaml params.yaml
+	@echo "Activated 'smoke' profile (params.yaml <- params_smoke.yaml)."
+
+use-flux:
+	cp params_flux.yaml params.yaml
+	@echo "Activated 'flux' profile (params.yaml <- params_flux.yaml)."
 
 data:
 	$(PY).generate_data --profile $(PROFILE)

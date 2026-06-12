@@ -32,7 +32,15 @@ import math
 
 from datasets import load_from_disk
 
-from .config import Config, add_config_args, config_from_args
+from .config import (
+    Config,
+    add_common_args,
+    add_config_args,
+    add_data_args,
+    add_embedding_args,
+    add_reranker_args,
+    config_from_args,
+)
 from .models import load_embedding_model
 
 logger = logging.getLogger(__name__)
@@ -290,6 +298,10 @@ def main() -> None:
         description="埋め込み×リランカーの 6 パターン 2 段階検索評価。"
     )
     add_config_args(parser)
+    add_common_args(parser)
+    add_data_args(parser)
+    add_embedding_args(parser)
+    add_reranker_args(parser)
     parser.add_argument(
         "--num-queries",
         type=int,

@@ -21,7 +21,14 @@ import logging
 
 from datasets import load_from_disk
 
-from .config import Config, add_config_args, config_from_args
+from .config import (
+    Config,
+    add_common_args,
+    add_config_args,
+    add_embedding_args,
+    add_train_args,
+    config_from_args,
+)
 from .evaluate import build_ir_evaluator
 from .models import load_embedding_model
 
@@ -109,6 +116,9 @@ def main() -> None:
         description="Qwen3-VL 埋め込みモデルをファインチューニングする。"
     )
     add_config_args(parser)
+    add_common_args(parser)
+    add_embedding_args(parser)
+    add_train_args(parser)
     args = parser.parse_args()
     cfg = config_from_args(args)
     train(cfg)

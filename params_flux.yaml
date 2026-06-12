@@ -6,8 +6,8 @@
 # (use this preset if the full-precision default is too heavy on your GPU).
 #
 # Usage:
-#   make data PROFILE=flux        # generate images with FLUX.2-klein
-#   make train ... PROFILE=flux   # (or just run the whole pipeline with PROFILE=flux)
+#   make use-flux        # activate this profile for the DVC pipeline (copies to params.yaml)
+#   make data PROFILE=flux   # or run a single stage directly against this file
 #
 # Requirements / notes:
 #   * Needs a recent `diffusers` with FLUX.2 (Flux2) support — upgrade if needed.
@@ -17,16 +17,15 @@
 #     base repo `black-forest-labs/FLUX.2-klein-4B`).
 #   * Paths match the `default` profile (data/ and outputs/), so FLUX-generated
 #     data is a drop-in replacement for the rest of the pipeline.
-profile: flux
-
-seed: 42
-device: cuda
-dtype: bfloat16
-
-paths:
-  data_dir: data
-  output_dir: outputs
-  model_dir: outputs/model
+common:
+  profile: flux
+  seed: 42
+  device: cuda
+  dtype: bfloat16
+  paths:
+    data_dir: data
+    output_dir: outputs
+    model_dir: outputs/model
 
 data:
   num_train: 200
