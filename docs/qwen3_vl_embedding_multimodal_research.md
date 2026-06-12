@@ -139,7 +139,7 @@ embeddings = [o.outputs.embedding for o in outputs]
 
 ### 複数画像時の VRAM 見積もり
 
-現在のプロジェクト設定：`max_pixels = 200,704`（`configs/default.yaml`）
+現在のプロジェクト設定：`max_pixels = 200,704`（`params_default.yaml`）
 
 画像N枚の場合のトークン数概算：
 - 200,704 pixels ≈ 448×448 → 約 784 トークン/枚
@@ -178,7 +178,7 @@ embeddings = [o.outputs.embedding for o in outputs]
 | `train.py` | **中** | 学習データの dict 形式変更。ST継続なら DataCollator はライブラリ側が処理。raw API 切り替えならカスタム実装必要。 |
 | `rerank.py` | **中** | Qwen3-VL-Reranker の複数画像・動画対応を別途確認要 |
 | `prompts.py` | **実質不要** | 合成キャプション生成のためのファイル。既存ドキュメント使用なら削除または放置でよい。 |
-| `configs/default.yaml` | **小** | `max_pixels` の調整（複数画像でトークン急増を防ぐ） |
+| `params_default.yaml` | **小** | `max_pixels` の調整（複数画像でトークン急増を防ぐ） |
 
 ---
 

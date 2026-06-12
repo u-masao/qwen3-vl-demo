@@ -139,15 +139,43 @@ uv run dvc repro            # reproduce the pipeline with dependency tracking
 uv run dvc metrics show     # list metrics_*.json
 ```
 
-Both `default` and `smoke` profiles are expanded from one definition (`foreach`).
+The pipeline reads the **active `params.yaml`**. Each stage's `cmd` passes only the
+values it uses via `${...}` substitution, so DVC records the expanded command (e.g.
+`--epochs 1`) in `dvc.lock` and re-runs **only the stages whose command changed**.
+Switch the active profile by copying one of the source files:
+
+```bash
+make use-default   # params.yaml <- params_default.yaml (the "real" GPU run)
+make use-flux      # params.yaml <- params_flux.yaml    (fp8 image generation)
+make use-smoke     # params.yaml <- params_smoke.yaml   (CPU wiring check)
+uv run dvc repro
+```
+
+> The DVC pipeline targets a "real" profile (`default` / `flux`). The `smoke` profile
+> disables the reranker, so its reranker/rerank stages produce no outputs — run the
+> CPU wiring check with `make smoke` instead of `dvc repro`.
 
 ### Changing the configuration
 
-Edit `configs/default.yaml` (number of samples, batch size, model IDs, image
-token caps, etc.). To use a different file, pass `--config path/to.yaml` to any command.
+Edit `params_default.yaml` (number of samples, batch size, model IDs, image token
+caps, etc.), then `make use-default` to activate it. Because each stage embeds only
+the values it uses, a change re-runs just the stages that consume that value:
+
+| Section in `params.yaml` | Re-runs (downstream included) | Untouched |
+|---|---|---|
+| `data.*`, `image_gen.*` | `generate_data` → everything downstream | — |
+| `train.*` (epochs, lr, batch…) | `train`, `train_reranker` → `eval`, `rerank` | `generate_data`, `eval_base` |
+| `embedding.*` (model_id, max_pixels, attn…) | `eval_base`, `train`, `eval`, `train_reranker`, `rerank` | `generate_data` |
+| `reranker.*` (model_id, top_k, negatives…) | `train_reranker`, `rerank` | `generate_data`, `eval_base`, `train`, `eval` |
+| `common.seed/device/dtype`, `common.paths.*` | the stages that pass that value | stages that don't |
+
+For a one-off run with a different value, pass the matching CLI override to any
+command (it overrides the active `params.yaml`), or point at another file with
+`--config`:
 
 ```bash
-uv run python -m qwen3vl_demo.train --config configs/default.yaml
+uv run python -m qwen3vl_demo.train --epochs 3 --lr 1e-4   # ad-hoc overrides
+uv run python -m qwen3vl_demo.train --config params_flux.yaml
 ```
 
 ---
@@ -171,7 +199,7 @@ make data PROFILE=flux        # generate with the fp8 checkpoint (use PROFILE=fl
 - **Both presets are Apache-2.0**, so there are no commercial restrictions.
 - The fp8 preset keeps VRAM low (~4 GB) but ships a single-file checkpoint; if
   `AutoPipelineForText2Image` can't load `black-forest-labs/FLUX.2-klein-4b-fp8`
-  in your diffusers version, point `image_gen.model_id` in `configs/flux.yaml` at
+  in your diffusers version, point `image_gen.model_id` in `params_flux.yaml` at
   the diffusers-format mirror
   [`Photoroom/FLUX.2-klein-4b-fp8-diffusers`](https://huggingface.co/Photoroom/FLUX.2-klein-4b-fp8-diffusers).
 - Loading FLUX.2 needs a **recent `diffusers` with FLUX.2 support** — upgrade if needed.
@@ -187,7 +215,7 @@ without downloading the heavy models.
 make smoke
 ```
 
-In the smoke profile (`configs/smoke.yaml`):
+In the smoke profile (`params_smoke.yaml`):
 
 - image generation is replaced by **synthetic stub images** (a solid color derived from the caption hash)
 - the embedding model is the small **`sentence-transformers/clip-ViT-B-32`** (CPU-friendly)
@@ -234,7 +262,7 @@ captions never overlap.
 ```
 qwen3-vl-demo/
 ├── src/qwen3vl_demo/
-│   ├── config.py          # YAML -> dataclass, --config / --profile
+│   ├── config.py          # YAML -> dataclass + CLI overrides (--profile / --epochs / …)
 │   ├── prompts.py         # template-combination caption generation
 │   ├── generate_data.py   # FLUX.2-klein (or stub) image generation → datasets
 │   ├── models.py          # embedding model loading (with attn fallback)
@@ -244,10 +272,11 @@ qwen3-vl-demo/
 │   └── rerank.py          # embedding retrieval top-k → reranker
 ├── app.py                 # Gradio results viewer
 ├── tests/                 # pure-Python unit tests (pytest)
-├── configs/               # default.yaml (real) / smoke.yaml (CPU wiring check)
+├── params.yaml            # active profile (copied from params_<profile>.yaml)
+├── params_default.yaml    # source profiles: default (real) / smoke / flux
 ├── docs/                  # architecture / specification / how-it-works (Japanese)
 ├── dvc.yaml               # DVC pipeline definition
-└── Makefile               # per-stage run targets
+└── Makefile               # per-stage run targets + use-<profile> switches
 ```
 
 See [Architecture](docs/architecture.md) for module responsibilities and dependencies.

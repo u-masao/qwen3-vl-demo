@@ -4,16 +4,19 @@
 #   - embedding model is a small CPU-friendly multimodal model (CLIP)
 #   - reranking is skipped (no tiny multimodal cross-encoder exists)
 # Use this only to validate the pipeline plumbing, NOT for real metrics.
-profile: smoke
-
-seed: 0
-device: cpu
-dtype: float32
-
-paths:
-  data_dir: data_smoke
-  output_dir: outputs_smoke
-  model_dir: outputs_smoke/model
+#
+# For a quick CPU check just run `make smoke` (calls each stage with
+# `--profile smoke`, reading this file directly — no copy needed). Activate it
+# for the DVC pipeline with `make use-smoke` (copies this file to params.yaml).
+common:
+  profile: smoke
+  seed: 0
+  device: cpu
+  dtype: float32
+  paths:
+    data_dir: data_smoke
+    output_dir: outputs_smoke
+    model_dir: outputs_smoke/model
 
 data:
   num_train: 8
@@ -26,6 +29,8 @@ image_gen:
   num_inference_steps: 1
   guidance_scale: 0.0
   batch_size: 4
+  cache_enabled: true
+  cache_dir: .cache/imggen
 
 embedding:
   model_id: sentence-transformers/clip-ViT-B-32   # small, multimodal, CPU-OK

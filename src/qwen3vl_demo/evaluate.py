@@ -22,7 +22,13 @@ import logging
 
 from datasets import load_from_disk
 
-from .config import Config, add_config_args, config_from_args
+from .config import (
+    Config,
+    add_common_args,
+    add_config_args,
+    add_embedding_args,
+    config_from_args,
+)
 from .models import load_embedding_model
 
 logger = logging.getLogger(__name__)
@@ -111,6 +117,8 @@ def main() -> None:
     )
     parser = argparse.ArgumentParser(description="テキスト→画像検索の精度を評価する。")
     add_config_args(parser)
+    add_common_args(parser)
+    add_embedding_args(parser)
     parser.add_argument(
         "--model",
         type=str,
