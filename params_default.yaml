@@ -44,6 +44,10 @@ reranker:
   top_k: 10                       # how many retrieved images to rerank per query
   model_dir: outputs/reranker     # where a fine-tuned reranker is saved / loaded from
   num_negatives: 3                # negatives per positive when fine-tuning the reranker
+  # Cap reranker image tokens at eval time to bound activation memory on a 16GB card
+  # (mirrors embedding.max_pixels). Without this the reranker runs images at full
+  # resolution, inflating VRAM and risking PCIe spill (Issue #11). null => uncapped.
+  max_pixels: 200704
 
 train:
   epochs: 1
