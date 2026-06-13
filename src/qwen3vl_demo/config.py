@@ -75,6 +75,24 @@ class DataCfg:
     # True にすると、評価時に「同じカテゴリの画像」も正解とみなす（緩い評価）。
     # 既定の False はキャプションと画像の厳密な 1 対 1 対応のみを正解とする。
     relevant_same_category: bool = False
+    # データ生成タスクの選択。"subject"（既存：subject の恣意的割当）か
+    # "preference"（人間の嗖好モデルで属性を生成し argmax appeal をペルソナラベルにする）。
+    # どちらも同一スキーマを出力するため、評価・学習・リランクの下流は不変。
+    task: str = "subject"
+
+
+@dataclass
+class PreferenceCfg:
+    """嗖好モデル（``data.task = preference`` 用）の設定（YAML の ``preference`` セクション）。
+
+    値は :func:`qwen3vl_demo.preference.build_model` の knob にそのまま渡る。``gamma`` が
+    交互作用（＝リランカーの伸びしろ）の強度を決める中心的なノブ。
+    """
+
+    gamma: float = 2.0  # 交互作用強度（0=加法的＝リランカー伸びしろ≈0、大きいほど伸びしろ大）
+    lam: float = 0.3  # 人気バイアス強度
+    sigma: float = 0.1  # 個人ノイズ振幅（決定的）
+    sharpness: float = 2.0  # 属性サンプリングの鋭さ（高いほど嗖好に忠実＝一貫性が強い）
 
 
 @dataclass
@@ -148,6 +166,7 @@ class Config:
     dtype: str = "bfloat16"  # "float32" / "float16" / "bfloat16"
     paths: Paths = field(default_factory=Paths)
     data: DataCfg = field(default_factory=DataCfg)
+    preference: PreferenceCfg = field(default_factory=PreferenceCfg)
     image_gen: ImageGenCfg = field(default_factory=ImageGenCfg)
     embedding: EmbeddingCfg = field(default_factory=EmbeddingCfg)
     reranker: RerankerCfg = field(default_factory=RerankerCfg)
@@ -217,6 +236,7 @@ def load_config(path: str | Path) -> Config:
         dtype=common.get("dtype", "bfloat16"),
         paths=_build(Paths, common.get("paths")),
         data=_build(DataCfg, raw.get("data")),
+        preference=_build(PreferenceCfg, raw.get("preference")),
         image_gen=_build(ImageGenCfg, raw.get("image_gen")),
         embedding=_build(EmbeddingCfg, raw.get("embedding")),
         reranker=_build(RerankerCfg, raw.get("reranker")),
@@ -233,12 +253,12 @@ def load_config(path: str | Path) -> Config:
 
 
 def _nullable_int(s: str) -> int | None:
-    """"none" / "null" / "" を None に、その他を int にする（DVC の null 展開対策）。"""
+    """ "none" / "null" / "" を None に、その他を int にする（DVC の null 展開対策）。"""
     return None if s.strip().lower() in ("none", "null", "") else int(s)
 
 
 def _nullable_str(s: str) -> str | None:
-    """"none" / "null" / "" を None に、その他をそのまま返す（DVC の null 展開対策）。"""
+    """ "none" / "null" / "" を None に、その他をそのまま返す（DVC の null 展開対策）。"""
     return None if s.strip().lower() in ("none", "null", "") else s
 
 
@@ -281,10 +301,21 @@ def add_common_args(parser: argparse.ArgumentParser) -> None:
     g = parser.add_argument_group("common overrides")
     g.add_argument("--seed", type=int, default=_UNSET, help="乱数シード（common.seed）。")
     g.add_argument("--device", type=str, default=_UNSET, help="cuda / cpu（common.device）。")
-    g.add_argument("--dtype", type=str, default=_UNSET, help="float32 / float16 / bfloat16（common.dtype）。")
-    g.add_argument("--data-dir", type=str, default=_UNSET, help="データセット出力先（common.paths.data_dir）。")
-    g.add_argument("--output-dir", type=str, default=_UNSET, help="出力先（common.paths.output_dir）。")
-    g.add_argument("--model-dir", type=str, default=_UNSET, help="FT 済み埋め込みモデル保存先（common.paths.model_dir）。")
+    g.add_argument(
+        "--dtype", type=str, default=_UNSET, help="float32 / float16 / bfloat16（common.dtype）。"
+    )
+    g.add_argument(
+        "--data-dir", type=str, default=_UNSET, help="データセット出力先（common.paths.data_dir）。"
+    )
+    g.add_argument(
+        "--output-dir", type=str, default=_UNSET, help="出力先（common.paths.output_dir）。"
+    )
+    g.add_argument(
+        "--model-dir",
+        type=str,
+        default=_UNSET,
+        help="FT 済み埋め込みモデル保存先（common.paths.model_dir）。",
+    )
 
 
 def add_data_args(parser: argparse.ArgumentParser) -> None:
@@ -292,7 +323,12 @@ def add_data_args(parser: argparse.ArgumentParser) -> None:
     g = parser.add_argument_group("data overrides")
     g.add_argument("--num-train", type=int, default=_UNSET, help="学習用ペア数（data.num_train）。")
     g.add_argument("--num-eval", type=int, default=_UNSET, help="評価用ペア数（data.num_eval）。")
-    g.add_argument("--image-size", type=int, default=_UNSET, help="生成画像の一辺ピクセル数（data.image_size）。")
+    g.add_argument(
+        "--image-size",
+        type=int,
+        default=_UNSET,
+        help="生成画像の一辺ピクセル数（data.image_size）。",
+    )
     g.add_argument(
         "--relevant-same-category",
         type=_parse_bool,
@@ -300,15 +336,61 @@ def add_data_args(parser: argparse.ArgumentParser) -> None:
         metavar="BOOL",
         help="同カテゴリ画像も正解扱いにするか（data.relevant_same_category）。",
     )
+    g.add_argument(
+        "--task",
+        type=str,
+        default=_UNSET,
+        help="データ生成タスク: subject（既存）/ preference（嗖好モデル）（data.task）。",
+    )
+
+
+def add_preference_args(parser: argparse.ArgumentParser) -> None:
+    """``preference`` セクションのオーバーライド引数（``data.task = preference`` 用）。"""
+    g = parser.add_argument_group("preference overrides")
+    g.add_argument(
+        "--pref-gamma", type=float, default=_UNSET, help="交互作用強度（preference.gamma）。"
+    )
+    g.add_argument(
+        "--pref-lam", type=float, default=_UNSET, help="人気バイアス強度（preference.lam）。"
+    )
+    g.add_argument(
+        "--pref-sigma", type=float, default=_UNSET, help="個人ノイズ振幅（preference.sigma）。"
+    )
+    g.add_argument(
+        "--pref-sharpness",
+        type=float,
+        default=_UNSET,
+        help="属性サンプリングの鋭さ（preference.sharpness）。",
+    )
 
 
 def add_image_gen_args(parser: argparse.ArgumentParser) -> None:
     """``image_gen`` セクションのオーバーライド引数。"""
     g = parser.add_argument_group("image_gen overrides")
-    g.add_argument("--image-model", type=str, default=_UNSET, help="画像生成モデル ID / 'stub'（image_gen.model_id）。")
-    g.add_argument("--steps", type=int, default=_UNSET, help="推論ステップ数（image_gen.num_inference_steps）。")
-    g.add_argument("--guidance-scale", type=float, default=_UNSET, help="ガイダンススケール（image_gen.guidance_scale）。")
-    g.add_argument("--image-batch-size", type=int, default=_UNSET, help="生成バッチサイズ（image_gen.batch_size）。")
+    g.add_argument(
+        "--image-model",
+        type=str,
+        default=_UNSET,
+        help="画像生成モデル ID / 'stub'（image_gen.model_id）。",
+    )
+    g.add_argument(
+        "--steps",
+        type=int,
+        default=_UNSET,
+        help="推論ステップ数（image_gen.num_inference_steps）。",
+    )
+    g.add_argument(
+        "--guidance-scale",
+        type=float,
+        default=_UNSET,
+        help="ガイダンススケール（image_gen.guidance_scale）。",
+    )
+    g.add_argument(
+        "--image-batch-size",
+        type=int,
+        default=_UNSET,
+        help="生成バッチサイズ（image_gen.batch_size）。",
+    )
     g.add_argument(
         "--image-cache",
         type=_parse_bool,
@@ -316,36 +398,98 @@ def add_image_gen_args(parser: argparse.ArgumentParser) -> None:
         metavar="BOOL",
         help="生成画像キャッシュの有効/無効（image_gen.cache_enabled）。",
     )
-    g.add_argument("--cache-dir", type=str, default=_UNSET, help="生成画像キャッシュ保存先（image_gen.cache_dir）。")
+    g.add_argument(
+        "--cache-dir",
+        type=str,
+        default=_UNSET,
+        help="生成画像キャッシュ保存先（image_gen.cache_dir）。",
+    )
 
 
 def add_embedding_args(parser: argparse.ArgumentParser) -> None:
     """``embedding`` セクションのオーバーライド引数。"""
     g = parser.add_argument_group("embedding overrides")
-    g.add_argument("--embedding-model", type=str, default=_UNSET, help="埋め込みモデル ID（embedding.model_id）。")
-    g.add_argument("--attn-impl", type=str, default=_UNSET, help="attention 実装（embedding.attn_implementation）。")
-    g.add_argument("--max-pixels", type=_nullable_int, default=_UNSET, help="画像トークン上限 / none（embedding.max_pixels）。")
-    g.add_argument("--query-prompt-name", type=_nullable_str, default=_UNSET, help="クエリ instruction 名 / none（embedding.query_prompt_name）。")
+    g.add_argument(
+        "--embedding-model",
+        type=str,
+        default=_UNSET,
+        help="埋め込みモデル ID（embedding.model_id）。",
+    )
+    g.add_argument(
+        "--attn-impl",
+        type=str,
+        default=_UNSET,
+        help="attention 実装（embedding.attn_implementation）。",
+    )
+    g.add_argument(
+        "--max-pixels",
+        type=_nullable_int,
+        default=_UNSET,
+        help="画像トークン上限 / none（embedding.max_pixels）。",
+    )
+    g.add_argument(
+        "--query-prompt-name",
+        type=_nullable_str,
+        default=_UNSET,
+        help="クエリ instruction 名 / none（embedding.query_prompt_name）。",
+    )
 
 
 def add_reranker_args(parser: argparse.ArgumentParser) -> None:
     """``reranker`` セクションのオーバーライド引数。"""
     g = parser.add_argument_group("reranker overrides")
-    g.add_argument("--reranker-model", type=_nullable_str, default=_UNSET, help="リランカーモデル ID / none（reranker.model_id）。")
-    g.add_argument("--top-k", type=int, default=_UNSET, help="リランク対象の上位件数（reranker.top_k）。")
-    g.add_argument("--reranker-dir", type=str, default=_UNSET, help="FT 済みリランカー保存先（reranker.model_dir）。")
-    g.add_argument("--num-negatives", type=int, default=_UNSET, help="リランカー学習の負例数（reranker.num_negatives）。")
-    g.add_argument("--reranker-max-pixels", type=_nullable_int, default=_UNSET, help="リランク時の画像トークン上限 / none（reranker.max_pixels）。")
+    g.add_argument(
+        "--reranker-model",
+        type=_nullable_str,
+        default=_UNSET,
+        help="リランカーモデル ID / none（reranker.model_id）。",
+    )
+    g.add_argument(
+        "--top-k", type=int, default=_UNSET, help="リランク対象の上位件数（reranker.top_k）。"
+    )
+    g.add_argument(
+        "--reranker-dir",
+        type=str,
+        default=_UNSET,
+        help="FT 済みリランカー保存先（reranker.model_dir）。",
+    )
+    g.add_argument(
+        "--num-negatives",
+        type=int,
+        default=_UNSET,
+        help="リランカー学習の負例数（reranker.num_negatives）。",
+    )
+    g.add_argument(
+        "--reranker-max-pixels",
+        type=_nullable_int,
+        default=_UNSET,
+        help="リランク時の画像トークン上限 / none（reranker.max_pixels）。",
+    )
 
 
 def add_train_args(parser: argparse.ArgumentParser) -> None:
     """``train`` セクションのオーバーライド引数。"""
     g = parser.add_argument_group("train overrides")
     g.add_argument("--epochs", type=int, default=_UNSET, help="エポック数（train.epochs）。")
-    g.add_argument("--batch-size", type=int, default=_UNSET, help="デバイスあたりバッチサイズ（train.per_device_batch_size）。")
-    g.add_argument("--grad-accum", type=int, default=_UNSET, help="勾配累積ステップ（train.gradient_accumulation_steps）。")
+    g.add_argument(
+        "--batch-size",
+        type=int,
+        default=_UNSET,
+        help="デバイスあたりバッチサイズ（train.per_device_batch_size）。",
+    )
+    g.add_argument(
+        "--grad-accum",
+        type=int,
+        default=_UNSET,
+        help="勾配累積ステップ（train.gradient_accumulation_steps）。",
+    )
     g.add_argument("--lr", type=float, default=_UNSET, help="学習率（train.learning_rate）。")
-    g.add_argument("--warmup-ratio", type=float, default=_UNSET, help="ウォームアップ比率（train.warmup_ratio）。")
+    g.add_argument(
+        "--warmup-ratio",
+        type=float,
+        default=_UNSET,
+        help="ウォームアップ比率（train.warmup_ratio）。",
+    )
     g.add_argument(
         "--gradient-checkpointing",
         type=_parse_bool,
@@ -353,9 +497,18 @@ def add_train_args(parser: argparse.ArgumentParser) -> None:
         metavar="BOOL",
         help="勾配チェックポイントの有効/無効（train.gradient_checkpointing）。",
     )
-    g.add_argument("--eval-steps", type=int, default=_UNSET, help="評価間隔ステップ（train.eval_steps）。")
-    g.add_argument("--save-steps", type=int, default=_UNSET, help="保存間隔ステップ（train.save_steps）。")
-    g.add_argument("--logging-steps", type=int, default=_UNSET, help="ログ間隔ステップ（train.logging_steps）。")
+    g.add_argument(
+        "--eval-steps", type=int, default=_UNSET, help="評価間隔ステップ（train.eval_steps）。"
+    )
+    g.add_argument(
+        "--save-steps", type=int, default=_UNSET, help="保存間隔ステップ（train.save_steps）。"
+    )
+    g.add_argument(
+        "--logging-steps",
+        type=int,
+        default=_UNSET,
+        help="ログ間隔ステップ（train.logging_steps）。",
+    )
 
 
 # オーバーライド引数の dest → (Config 上の親オブジェクトを返す関数, 属性名) の対応表。
@@ -371,6 +524,11 @@ def _override_targets(cfg: Config):
         "num_eval": (cfg.data, "num_eval"),
         "image_size": (cfg.data, "image_size"),
         "relevant_same_category": (cfg.data, "relevant_same_category"),
+        "task": (cfg.data, "task"),
+        "pref_gamma": (cfg.preference, "gamma"),
+        "pref_lam": (cfg.preference, "lam"),
+        "pref_sigma": (cfg.preference, "sigma"),
+        "pref_sharpness": (cfg.preference, "sharpness"),
         "image_model": (cfg.image_gen, "model_id"),
         "steps": (cfg.image_gen, "num_inference_steps"),
         "guidance_scale": (cfg.image_gen, "guidance_scale"),

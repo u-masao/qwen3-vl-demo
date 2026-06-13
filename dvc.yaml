@@ -25,6 +25,11 @@ stages:
       --num-train ${data.num_train}
       --num-eval ${data.num_eval}
       --image-size ${data.image_size}
+      --task ${data.task}
+      --pref-gamma ${preference.gamma}
+      --pref-lam ${preference.lam}
+      --pref-sigma ${preference.sigma}
+      --pref-sharpness ${preference.sharpness}
       --image-model ${image_gen.model_id}
       --steps ${image_gen.num_inference_steps}
       --guidance-scale ${image_gen.guidance_scale}
@@ -34,6 +39,7 @@ stages:
     deps:
       - src/qwen3vl_demo/generate_data.py
       - src/qwen3vl_demo/image_cache.py
+      - src/qwen3vl_demo/preference.py
       - src/qwen3vl_demo/prompts.py
       - src/qwen3vl_demo/tracking.py
     outs:

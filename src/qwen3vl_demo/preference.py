@@ -1,9 +1,10 @@
 """人間の嗜好を模した「裏設定（潜在嗜好）」モデル。
 
-このモジュールは、ペルソナ検索タスクの **正解（relevance）の作り方** を一手に引き受ける
-単一の真実（SSOT）。``generate_data`` / ``evaluate`` / ``rerank`` / ``train_reranker`` は
-すべてこの嗜好モデルを参照し、`data/preference_model.json` に保存された同一の ground-truth
-から graded relevance を計算する。
+このモジュールは、ペルソナ検索タスク（``data.task = preference``）の **正解（relevance）の
+作り方** を一手に引き受ける単一の真実（SSOT）。``generate_data`` が各画像の属性をサンプルし、
+**その画像を最も好むペルソナ（argmax appeal）** をラベル（``persona`` 列）に付ける。これにより
+評価・学習・リランクの下流コードは「persona 列の一致＝関連」という従来の仕組みのまま、一切変えずに
+新しいタスクへ切り替えられる（既存の subject タスクと**並列**のバリアント）。
 
 設計の狙い
 ----------
@@ -11,19 +12,21 @@
 飽和し、(2) リランカー FT の伸びしろが消える、という問題があった。本モデルは **人間の嗜好の
 構造** を写し取ることで、これを構造的に解消する。
 
-1. **低次元の潜在因子** … 嗜好は少数の潜在軸（warmth / era / ornament / mood）に載る。
-2. **アーキタイプの混合** … 各ペルソナは少数の共有アーキタイプ（型）の混合。共有構造が
+1. **低次元の潜在因子** … 嗜好は少数の潜在軸（warmth / era / ornament / mood / saturation /
+   material / setting）に載る。
+2. **アーキタイプの混合** … 各ペルソナは少数の共有アーキタイプ（型）の sparse な混合。共有構造が
    あるため、将来の未知ペルソナ few-shot 汎化（v2）の足場になる。
-3. **確率的・段階的** … relevance は二値でなく連続値（graded）。境界がゆらぐ＝「緩い一貫性」。
-4. **非加法的な交互作用（最重要）** … 「warm も ornate も好き、でも warm かつ ornate は嫌い」
-   のような AND/NOT の相互作用。これは内積で候補をスコアする bi-encoder（埋め込み）が表現
-   しづらく、クエリと候補を結合して見る cross-encoder（リランカー）が得意とする。つまり
-   **リランカーの伸びしろは、この交互作用に由来する**。`gamma`（交互作用強度）で大きさを制御し、
-   ``gamma=0`` なら加法的＝リランカー伸びしろ≈0（旧タスクの再現）、``gamma>0`` で伸びしろが出る。
-5. **人気バイアス** … 平均的な嗜好に沿う候補は万人受けする（`lam` で制御）。
+3. **確率的・段階的** … 属性は嗖好分布から確率的にサンプルされ、appeal は連続値。境界がゆらぐ
+   ＝「緩い一貫性」。
+4. **非加法的な交互作用（最重要）** … 「warm も ornate も単体では好き、でも warm かつ ornate は嫌い」
+   のような AND/NOT の相互作用。これは内積で候補をスコアする bi-encoder（埋め込み）が表現しづらく、
+   クエリと候補を結合して見る cross-encoder（リランカー）が得意とする。つまり **リランカーの伸びしろは、
+   この交互作用に由来する**。``gamma``（交互作用強度）で大きさを制御し、``gamma=0`` なら加法的＝
+   リランカー伸びしろ≈0（旧タスクの再現）、``gamma>0`` で伸びしろが出る、という難易度ノブになる。
+5. **人気バイアス** … 平均的な嗖好に沿う候補は万人受けする（``lam`` で制御）。
 
-クエリは opaque トークン（``"user_alpha"`` 等）のままなので、ベースモデルは
-トークンと嗜好の対応を知らず ``base ≈ random`` が保たれ、FT の効果を測れる。
+クエリは opaque トークン（``"user_alpha"`` 等）のままなので、ベースモデルはトークンと嗖好の対応を
+知らず ``base ≈ random`` が保たれ、FT の効果を測れる。
 
 属性の表現
 ----------
@@ -41,9 +44,10 @@ import random
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
-# --- 潜在嗜好軸 -------------------------------------------------------------
+# --- 潜在嗖好軸 -------------------------------------------------------------
 # 軸の並び順がベクトルのインデックスを定義する。各軸は二値（0/1）。
-AXES: list[str] = ["warmth", "era", "ornament", "mood"]
+# 軸を増やすと組合せ空間が広がり（やや sparse になる）、交互作用の余地と細粒度識別が増える。
+AXES: list[str] = ["warmth", "era", "ornament", "mood", "saturation", "material", "setting"]
 
 # 各軸の値 → 画像生成プロンプトに差し込む語片。(value=0 の語片, value=1 の語片)。
 FRAGMENTS: dict[str, tuple[str, str]] = {
@@ -51,42 +55,52 @@ FRAGMENTS: dict[str, tuple[str, str]] = {
     "era": ("modern", "vintage"),
     "ornament": ("minimalist, clean", "ornate, intricately detailed"),
     "mood": ("bright, airy lighting", "moody, dim lighting"),
+    "saturation": ("muted, desaturated colors", "vivid, saturated colors"),
+    "material": ("organic, natural materials", "sleek, metallic surfaces"),
+    "setting": ("in a plain studio", "in a lush outdoor setting"),
 }
 
 # --- アーキタイプ（共有される「型」）----------------------------------------
-# 各アーキタイプは軸上の嗜好ベクトル（+好む / -嫌う / 0中立）。ペルソナはこれらの混合。
+# 各アーキタイプは軸上の嗖好ベクトル（+好む / -嫌う / 0中立）。sparse（各型は 3-4 軸だけ非ゼロ）。
+# 並び順は AXES に対応: [warmth, era, ornament, mood, saturation, material, setting]
 ARCHETYPES: dict[str, list[float]] = {
-    #                 warmth  era   ornament  mood
-    "retro_warm": [1.0, 1.0, 0.0, 0.0],  # 暖色・ヴィンテージ好き
-    "modern_minimal": [-1.0, -1.0, -1.0, 0.0],  # 寒色・モダン・ミニマル好き
-    "ornate_moody": [0.0, 0.0, 1.0, 1.0],  # 装飾的・moody 好き
-    "bright_airy": [0.5, 0.0, -1.0, -1.0],  # ミニマル・明るい好き（やや暖色）
+    "retro_warm": [1.0, 1.0, 0.0, 0.0, -1.0, 0.0, 0.0],  # 暖色・ヴィンテージ・落ち着いた色
+    "modern_minimal": [-1.0, -1.0, -1.0, 0.0, 0.0, 1.0, 0.0],  # 寒色・モダン・ミニマル・金属質
+    "ornate_moody": [0.0, 0.0, 1.0, 1.0, 1.0, 0.0, 0.0],  # 装飾的・moody・鮮やか
+    "bright_airy": [0.0, 0.0, -1.0, -1.0, 0.0, 0.0, 1.0],  # ミニマル・明るい・屋外
+    "earthy_natural": [1.0, 0.0, 0.0, 0.0, -1.0, -1.0, 1.0],  # 暖色・自然素材・屋外・落ち着いた色
+    "bold_vivid": [0.0, 0.0, 1.0, -1.0, 1.0, 1.0, 0.0],  # 装飾的・明るい・鮮やか・金属質
 }
 
 # --- ペルソナ＝アーキタイプの混合（convex weights, 合計 1）------------------
 # わざと重なりを持たせる（共有構造＝「似て非なる」候補を生み、リランカーの仕事を作る）。
 PERSONA_MIX: dict[str, dict[str, float]] = {
-    "user_alpha": {"retro_warm": 0.7, "ornate_moody": 0.3},
+    "user_alpha": {"retro_warm": 0.6, "ornate_moody": 0.4},
     "user_beta": {"modern_minimal": 0.7, "bright_airy": 0.3},
-    "user_gamma": {"ornate_moody": 0.6, "retro_warm": 0.4},
-    "user_delta": {"bright_airy": 0.6, "modern_minimal": 0.4},
+    "user_gamma": {"ornate_moody": 0.5, "bold_vivid": 0.5},
+    "user_delta": {"earthy_natural": 0.6, "bright_airy": 0.4},
     "user_epsilon": {"retro_warm": 0.5, "modern_minimal": 0.5},  # 相反する型の混合
-    "user_zeta": {"ornate_moody": 0.5, "bright_airy": 0.5},
-    "user_eta": {"retro_warm": 0.34, "modern_minimal": 0.33, "ornate_moody": 0.33},
+    "user_zeta": {"bold_vivid": 0.5, "modern_minimal": 0.3, "ornate_moody": 0.2},
+    "user_eta": {"earthy_natural": 0.4, "retro_warm": 0.3, "bright_airy": 0.3},
 }
 
 # --- 非加法的な交互作用 ------------------------------------------------------
 # persona -> [(axis_i, axis_j, coef), ...]。appeal に coef * (a_i AND a_j) を gamma 倍で加える。
-# 負の coef は「i も j も単体では好きだが、両方そろうと嫌い」という非単調な嗜好を作る
-# （線形＝加法モデルでは表現できない＝リランカーの領分）。
+# 負の coef は「i も j も単体では好きだが、両方そろうと嫌い」という非単調な嗖好を作る
+# （線形＝加法モデルでは表現できない＝リランカーの領分）。各ペルソナに 2-3 個・係数は大きめ。
+# 軸: warmth0 / era1 / ornament2 / mood3 / saturation4 / material5 / setting6
 INTERACTIONS: dict[str, list[tuple[int, int, float]]] = {
-    "user_alpha": [(0, 2, -1.0)],  # warm かつ ornate は過剰で嫌い
-    "user_beta": [(1, 3, +1.0)],  # vintage かつ moody の意外な組合せが好き
-    "user_gamma": [(0, 3, -1.0)],  # warm かつ moody は嫌い
-    "user_delta": [(2, 1, +1.0)],  # ornate かつ vintage が好き
-    "user_epsilon": [(0, 1, +1.0)],  # warm かつ vintage で相反を解消
-    "user_zeta": [(2, 0, -1.0)],  # ornate かつ warm は嫌い
-    "user_eta": [(1, 2, +1.0), (0, 3, -1.0)],
+    "user_alpha": [(0, 2, -2.0), (1, 4, +1.5)],  # warm∧ornate は過剰で嫌い / vintage∧vivid は好き
+    "user_beta": [(5, 3, -1.5), (2, 6, +1.5)],  # metallic∧moody 嫌い / ornate∧outdoor 好き
+    "user_gamma": [(2, 4, -2.0), (3, 6, +1.5)],  # ornate∧vivid は過剰 / moody∧outdoor 好き
+    "user_delta": [(6, 5, -1.5), (0, 4, +1.5)],  # outdoor∧metallic 衝突 / warm∧vivid 好き
+    "user_epsilon": [(0, 1, +2.0), (2, 5, -1.5)],  # warm∧vintage で相反解消 / ornate∧metallic 嫌い
+    "user_zeta": [(4, 3, -1.5), (2, 1, +1.5)],  # vivid∧moody 衝突 / ornate∧vintage 好き
+    "user_eta": [
+        (1, 2, +1.5),
+        (0, 3, -2.0),
+        (6, 4, +1.0),
+    ],  # vintage∧ornate / warm∧moody / outdoor∧vivid
 }
 
 
@@ -95,22 +109,22 @@ class PreferenceModel:
     """解決済みの嗖好モデル（JSON 直列化可能な数値表現）。
 
     ``build_model`` でコード中のテンプレ（アーキタイプ・混合・交互作用）＋スカラ knob から
-    構築し、``data/preference_model.json`` に保存して全ステージで共有する。
+    構築し、``data/preference_model.json`` に保存して再現性・解析に使う（下流は不要）。
     """
 
     axes: list[str]
     fragments: dict[str, list[str]]  # axis -> [frag0, frag1]
     archetypes: dict[str, list[float]]
     persona_mix: dict[str, dict[str, float]]
-    persona_pref: dict[str, list[float]]  # persona -> θ_p（軸上の嗜好ベクトル）
+    persona_pref: dict[str, list[float]]  # persona -> θ_p（軸上の嗖好ベクトル）
     global_pref: list[float]  # アーキタイプ平均＝人気バイアスの基準
     interactions: dict[str, list[list[float]]]  # persona -> [[i, j, coef], ...]
     gamma: float  # 交互作用強度（0=加法のみ）
     lam: float  # 人気バイアス強度
     sigma: float  # 個人ノイズ振幅（決定的）
-    temperature: float  # appeal -> 確率へのシグモイド温度
-    sharpness: float  # 属性サンプリングの鋭さ（高いほど嗜好に忠実＝一貫性が強い）
-    threshold: float  # relevance を二値化する閾値（recall/MRR 用）
+    temperature: float  # appeal -> 確率へのシグモイド温度（argmax ラベルには不変）
+    sharpness: float  # 属性サンプリングの鋭さ（高いほど嗖好に忠実＝一貫性が強い）
+    threshold: float  # relevance を二値化する閾値（将来の graded 用。argmax ラベルでは未使用）
     seed: int  # ノイズ用シード
 
     def personas(self) -> list[str]:
@@ -146,7 +160,7 @@ def _mean_vectors(vectors: list[list[float]], n_axes: int) -> list[float]:
 
 def build_model(
     *,
-    gamma: float = 1.0,
+    gamma: float = 2.0,
     lam: float = 0.3,
     sigma: float = 0.1,
     temperature: float = 1.0,
@@ -156,7 +170,7 @@ def build_model(
 ) -> PreferenceModel:
     """コードのテンプレ＋スカラ knob から :class:`PreferenceModel` を構築する。
 
-    knob（特に ``gamma``）が難易度とリランカー伸びしろを制御する中心。
+    knob（特に ``gamma``）が難易度とリランカー伸びしろを制御する中心。``gamma`` 既定は強め。
     """
     n = len(AXES)
     persona_pref = _resolve_persona_pref(ARCHETYPES, PERSONA_MIX, n)
@@ -227,20 +241,32 @@ def appeal(model: PreferenceModel, persona: str, attrs: list[int]) -> float:
     return score
 
 
+def assign_persona(model: PreferenceModel, attrs: list[int]) -> str:
+    """その属性の候補を最も好むペルソナ（argmax appeal）を返す＝relevance ラベル。
+
+    「persona 一致＝その画像の一番のファン」という意味づけ。これにより下流（評価・学習・
+    リランク）は従来の persona 一致ロジックのまま、graded 化や閾値なしで使える。
+    交互作用があるため argmax は非線形に決まり（warm∧ornate を嫌うペルソナはそれを取らない等）、
+    embedder が線形では境界を引けず、リランカーの伸びしろが生まれる。
+    """
+    best_persona = ""
+    best_score = -math.inf
+    for persona in model.persona_pref:  # dict 順は決定的（同点は先勝ち）
+        s = appeal(model, persona, attrs)
+        if s > best_score:
+            best_persona, best_score = persona, s
+    return best_persona
+
+
 def relevance_score(model: PreferenceModel, persona: str, attrs: list[int]) -> float:
-    """appeal をシグモイドで [0,1] の graded relevance に変換する。"""
+    """appeal をシグモイドで [0,1] の graded relevance に変換する（将来の graded 用）。"""
     return _sigmoid(appeal(model, persona, attrs) / model.temperature)
-
-
-def is_relevant(model: PreferenceModel, persona: str, attrs: list[int]) -> bool:
-    """二値 relevance（recall/MRR 用）。``relevance_score >= threshold`` なら正解。"""
-    return relevance_score(model, persona, attrs) >= model.threshold
 
 
 def graded_relevance(
     model: PreferenceModel, persona: str, corpus_attrs: list[list[int]]
 ) -> dict[int, float]:
-    """コーパス全件に対する graded relevance（NDCG の gain）を返す（idx -> [0,1]）。"""
+    """コーパス全件に対する graded relevance（将来の graded NDCG 用。idx -> [0,1]）。"""
     return {idx: relevance_score(model, persona, attrs) for idx, attrs in enumerate(corpus_attrs)}
 
 
@@ -248,7 +274,7 @@ def graded_relevance(
 def sample_item_attributes(model: PreferenceModel, persona: str, rng: random.Random) -> list[int]:
     """ペルソナの嗖好分布から 1 候補の二値属性をサンプルする（緩い一貫性）。
 
-    各軸で P(a_i=1) = sigmoid(sharpness · θ_{p,i})。sharpness が高いほど嗜好に忠実
+    各軸で P(a_i=1) = sigmoid(sharpness · θ_{p,i})。sharpness が高いほど嗖好に忠実
     （= 一貫性が強い）。低いほど散漫になる。
     """
     theta = model.persona_pref[persona]
@@ -260,9 +286,9 @@ def attributes_to_fragments(model: PreferenceModel, attrs: list[int]) -> list[st
     return [model.fragments[ax][attrs[i]] for i, ax in enumerate(model.axes)]
 
 
-# --- 属性の (de)シリアライズ（HF dataset の 1 カラムに収める）---------------
+# --- 属性の (de)シリアライズ（必要時の解析用）------------------------------
 def encode_attributes(attrs: list[int]) -> str:
-    """属性ベクトルを dataset 格納用の文字列にする（"1,0,1,0"）。"""
+    """属性ベクトルを格納用の文字列にする（"1,0,1,0,..."）。"""
     return ",".join(str(int(v)) for v in attrs)
 
 
@@ -272,7 +298,7 @@ def decode_attributes(s: str) -> list[int]:
     return [int(x) for x in s.split(",")] if s else []
 
 
-# --- モデルの保存・読み込み（全ステージで同一 ground-truth を共有）---------
+# --- モデルの保存・読み込み（再現性・解析用）-------------------------------
 def save_model(model: PreferenceModel, path: str | Path) -> None:
     """嗖好モデルを JSON に保存する（``data/preference_model.json``）。"""
     path = Path(path)

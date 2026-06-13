@@ -22,6 +22,20 @@ data:
   # If true, images sharing the query's category also count as relevant during
   # evaluation (looser). Unused when persona-based evaluation is active.
   relevant_same_category: false
+  # Data-generation task. "subject" = legacy (arbitrary subject->persona map).
+  # "preference" = human-like preference model (latent taste axes + archetype
+  # mixtures + non-additive interactions); each image is labelled with its
+  # argmax-appeal persona, so the eval/train/rerank pipeline is unchanged.
+  task: subject
+
+# Preference task knobs (only used when data.task = preference). gamma is the
+# interaction strength: 0 => additive (reranker has ~no headroom, reproduces the
+# old behaviour), larger => stronger non-additive structure => more reranker headroom.
+preference:
+  gamma: 2.0
+  lam: 0.3
+  sigma: 0.1
+  sharpness: 2.0
 
 image_gen:
   # FLUX.2-klein-4B (Apache-2.0) — step-distilled rectified-flow model.

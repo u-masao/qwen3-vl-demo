@@ -32,6 +32,14 @@ data:
   num_eval: 50
   image_size: 512
   relevant_same_category: false
+  task: subject            # "subject"(legacy) | "preference"(human-like preference model)
+
+# Preference task knobs (used only when data.task = preference). gamma = interaction strength.
+preference:
+  gamma: 2.0
+  lam: 0.3
+  sigma: 0.1
+  sharpness: 2.0
 
 image_gen:
   model_id: black-forest-labs/FLUX.2-klein-4b-fp8

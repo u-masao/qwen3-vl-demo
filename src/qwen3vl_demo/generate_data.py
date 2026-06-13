@@ -38,11 +38,13 @@ from .config import (
     add_config_args,
     add_data_args,
     add_image_gen_args,
+    add_preference_args,
     config_from_args,
     resolve_dtype,
 )
 from .image_cache import ImageCache, derive_seed
-from .prompts import Sample, build_captions
+from .preference import PreferenceModel, build_model, save_model
+from .prompts import Sample, build_captions, build_captions_preference
 from .tracking import DATA_EXPERIMENT_NAME, Timer, cli_run, log_metrics
 
 logger = logging.getLogger(__name__)
@@ -253,14 +255,32 @@ def generate_dataset(cfg: Config) -> None:
     （``main()`` の :func:`cli_run`）が CLI 全体に対して開く run にぶら下がる
     （アクティブ run が無ければ各記録は no-op）。
     """
+    # データ生成タスクで caption ビルダーを切り替える（どちらも同一スキーマ＝下流は不変）。
     # train と eval で seed をずらし、キャプションが重複しないようにする。
-    train_samples = build_captions(cfg.data.num_train, seed=cfg.seed)
-    eval_samples = build_captions(cfg.data.num_eval, seed=cfg.seed + 10_000)
+    pref_model: PreferenceModel | None = None
+    if cfg.data.task == "preference":
+        pref_model = build_model(
+            gamma=cfg.preference.gamma,
+            lam=cfg.preference.lam,
+            sigma=cfg.preference.sigma,
+            sharpness=cfg.preference.sharpness,
+            seed=cfg.seed,
+        )
+        train_samples = build_captions_preference(
+            cfg.data.num_train, seed=cfg.seed, model=pref_model
+        )
+        eval_samples = build_captions_preference(
+            cfg.data.num_eval, seed=cfg.seed + 10_000, model=pref_model
+        )
+    else:
+        train_samples = build_captions(cfg.data.num_train, seed=cfg.seed)
+        eval_samples = build_captions(cfg.data.num_eval, seed=cfg.seed + 10_000)
 
     # スモークプロファイル、または明示的に model_id="stub" の場合はスタブ画像を使う。
     use_stub = cfg.is_smoke or cfg.image_gen.model_id == "stub"
 
     logger.info("train %d 件 + eval %d 件の画像を生成します", cfg.data.num_train, cfg.data.num_eval)
+    logger.info("  生成タスク: %s", cfg.data.task)
     logger.info("  画像ソース: %s", "スタブ（合成画像）" if use_stub else cfg.image_gen.model_id)
 
     metrics: dict[str, float] = {"num_train": len(train_samples), "num_eval": len(eval_samples)}
@@ -309,6 +329,9 @@ def generate_dataset(cfg: Config) -> None:
     cfg.data_path.mkdir(parents=True, exist_ok=True)
     train_ds.save_to_disk(str(cfg.data_path / "train"))
     eval_ds.save_to_disk(str(cfg.data_path / "eval"))
+    if pref_model is not None:
+        # 嗖好モデルを再現性・解析用に保存する（下流は依存しない）。
+        save_model(pref_model, cfg.data_path / "preference_model.json")
     logger.info(
         "データセットを %s に保存しました（train=%d, eval=%d）",
         cfg.data_path,
@@ -329,12 +352,17 @@ def main() -> None:
     add_config_args(parser)
     add_common_args(parser)
     add_data_args(parser)
+    add_preference_args(parser)
     add_image_gen_args(parser)
     args = parser.parse_args()
     cfg = config_from_args(args)
     # run は CLI 全体（生成・キャッシュ・保存）を覆う。
     use_stub = cfg.is_smoke or cfg.image_gen.model_id == "stub"
-    tags = {"stage": "generate_data", "image_source": "stub" if use_stub else cfg.image_gen.model_id}
+    tags = {
+        "stage": "generate_data",
+        "task": cfg.data.task,
+        "image_source": "stub" if use_stub else cfg.image_gen.model_id,
+    }
     with cli_run(DATA_EXPERIMENT_NAME, "generate_data", args=args, cfg=cfg, tags=tags):
         generate_dataset(cfg)
 
