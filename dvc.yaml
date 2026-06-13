@@ -137,6 +137,7 @@ stages:
       --query-prompt-name ${embedding.query_prompt_name}
       --reranker-model ${reranker.model_id}
       --reranker-dir ${reranker.model_dir}
+      --reranker-max-pixels ${reranker.max_pixels}
       --num-negatives ${reranker.num_negatives}
       --epochs ${train.epochs}
       --batch-size ${train.per_device_batch_size}

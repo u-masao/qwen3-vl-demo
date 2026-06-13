@@ -40,7 +40,13 @@ from .config import (
     add_train_args,
     config_from_args,
 )
-from .tracking import TRAIN_EXPERIMENT_NAME, cli_run, log_time, make_curve_callback
+from .tracking import (
+    TRAIN_EXPERIMENT_NAME,
+    cli_run,
+    log_gpu_memory_status,
+    log_time,
+    make_curve_callback,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -226,7 +232,13 @@ def train_reranker(cfg: Config) -> None:
     # 膨らみ、16GB カードでは枯渇する（WSL2 では共有メモリへ退避して極端に遅くなる）。
     train_ds = _build_reranker_dataset(cfg)
 
-    model = CrossEncoder(cfg.reranker.model_id, device=cfg.device)
+    # 学習時も画像トークンを max_pixels で上限化し、活性化メモリ（と共有メモリ退避）を抑える。
+    # これが無いと reranker はフル解像度で画像を処理し、16GB を超えて WSL2 の共有メモリへ
+    # 退避→激遅化する（rerank 評価側の Issue #11 対処と同方針を学習側にも適用）。
+    ce_kwargs: dict = {"device": cfg.device}
+    if cfg.reranker.max_pixels:
+        ce_kwargs["processor_kwargs"] = {"max_pixels": cfg.reranker.max_pixels}
+    model = CrossEncoder(cfg.reranker.model_id, **ce_kwargs)
     loss = BinaryCrossEntropyLoss(model)
 
     # Ada では bf16、明示的に float16 指定なら fp16、CPU では混合精度なし。
@@ -280,6 +292,7 @@ def train_reranker(cfg: Config) -> None:
     # ここでは学習本体の所要時間だけ計測してアクティブ run に記録する。
     with log_time("time.train_total_sec"):
         trainer.train()
+    log_gpu_memory_status()  # VRAM ピークと共有メモリ退避(spill)の有無を記録
 
     cfg.reranker_model_path.mkdir(parents=True, exist_ok=True)
     model.save_pretrained(str(cfg.reranker_model_path))

@@ -220,6 +220,57 @@ def log_metrics(metrics: Mapping[str, Any], *, step: int | None = None) -> None:
         logger.warning("mlflow へのメトリクス記録に失敗しました: %s", exc)
 
 
+def gpu_memory_status() -> dict[str, float] | None:
+    """torch CUDA アロケータの予約/確保ピークと物理 VRAM を比べ、共有メモリ退避を検出する。
+
+    WSL2 では確保が物理 VRAM を超えても NVIDIA driver が共有システムメモリへ退避して成功する
+    （その分 PCIe 経由で激遅化する）。``nvidia-smi`` の使用量は物理上限で頭打ちになるため、
+    退避の有無は **torch の予約量 ``memory_reserved`` / 確保量 ``max_memory_allocated``** を
+    物理 VRAM ``total_memory`` と比較して判定するのが確実。CUDA 非対応なら None。
+
+    返すキー（プロセス開始からのピーク。各 CLI は別プロセスなのでリセット不要）:
+      * ``vram.total_mib`` … 物理 VRAM
+      * ``vram.peak_reserved_mib`` … アロケータ予約ピーク
+      * ``vram.peak_allocated_mib`` … テンソル確保ピーク（実working set）
+      * ``vram.peak_spill_mib`` … max(0, 予約ピーク - 物理)＝共有メモリへ退避した量
+      * ``vram.spilled`` … 退避していれば 1.0（予約ピークが物理を超過）
+    """
+    try:
+        import torch
+
+        if not torch.cuda.is_available():
+            return None
+        mib = 1024 * 1024
+        total = torch.cuda.get_device_properties(0).total_memory / mib
+        peak_reserved = torch.cuda.max_memory_reserved() / mib
+        peak_alloc = torch.cuda.max_memory_allocated() / mib
+        return {
+            "vram.total_mib": total,
+            "vram.peak_reserved_mib": peak_reserved,
+            "vram.peak_allocated_mib": peak_alloc,
+            "vram.peak_spill_mib": max(0.0, peak_reserved - total),
+            "vram.spilled": 1.0 if peak_reserved > total else 0.0,
+        }
+    except Exception:  # noqa: BLE001 - torch 無し/CPU でも無視してよい
+        return None
+
+
+def log_gpu_memory_status() -> None:
+    """:func:`gpu_memory_status` をアクティブ run に記録し、退避していれば警告ログを出す。"""
+    status = gpu_memory_status()
+    if status is None:
+        return
+    log_metrics(status)
+    if status["vram.spilled"]:
+        logger.warning(
+            "[VRAM] 共有メモリへ退避: 予約ピーク %.0f MiB > 物理 %.0f MiB（+%.0f MiB 退避）。"
+            "max_pixels / batch を下げて 16GB に収めることを推奨。",
+            status["vram.peak_reserved_mib"],
+            status["vram.total_mib"],
+            status["vram.peak_spill_mib"],
+        )
+
+
 class Timer:
     """``with Timer() as t:`` で経過秒数を ``t.elapsed`` に記録するコンテキストマネージャ。"""
 

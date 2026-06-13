@@ -44,14 +44,16 @@ reranker:
   top_k: 10                       # how many retrieved images to rerank per query
   model_dir: outputs/reranker     # where a fine-tuned reranker is saved / loaded from
   num_negatives: 3                # negatives per positive when fine-tuning the reranker
-  # Cap reranker image tokens at eval time to bound activation memory on a 16GB card
-  # (mirrors embedding.max_pixels). Without this the reranker runs images at full
-  # resolution, inflating VRAM and risking PCIe spill (Issue #11). null => uncapped.
-  max_pixels: 200704
+  # Cap reranker image tokens to bound activation memory on a 16GB card (mirrors
+  # embedding.max_pixels). 200704 だと reranker 学習が 16GB を超え WSL2 の共有メモリへ
+  # 退避して激遅化したため、100352（半分）に下げて VRAM に収める（Issue #11）。null => uncapped.
+  max_pixels: 100352
 
 train:
   epochs: 1
-  per_device_batch_size: 4
+  # 4 だと reranker 学習で VRAM が共有メモリへ退避したため 2 に下げる（埋め込み学習と共通。
+  # MNRL の負例数は減るが 16GB での安定動作を優先。Issue #11）。
+  per_device_batch_size: 2
   gradient_accumulation_steps: 1
   learning_rate: 2.0e-5
   warmup_ratio: 0.1

@@ -43,7 +43,15 @@ from .config import (
     config_from_args,
 )
 from .models import load_embedding_model
-from .tracking import EXPERIMENT_NAME, Timer, args_to_params, cli_run, log_metrics, start_run
+from .tracking import (
+    EXPERIMENT_NAME,
+    Timer,
+    args_to_params,
+    cli_run,
+    log_gpu_memory_status,
+    log_metrics,
+    start_run,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -397,6 +405,7 @@ def run_rerank(
     # 子 run に残す（Retriever=rerank none と Reranker を同一 Experiment に並べる。Issue #9）。
     if args is not None:
         log_metrics({**timings, **vram_peaks})
+        log_gpu_memory_status()  # プロセス全体の VRAM ピークと共有メモリ退避(spill)の有無
         _log_rerank_variants(metrics, args, top_k, timings)
 
     # --- 事例: 最良の組（ft があれば ft）でリランク前後を数件保存 ---

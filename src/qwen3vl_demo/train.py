@@ -31,7 +31,13 @@ from .config import (
 )
 from .evaluate import build_ir_evaluator
 from .models import load_embedding_model
-from .tracking import TRAIN_EXPERIMENT_NAME, cli_run, log_time, make_curve_callback
+from .tracking import (
+    TRAIN_EXPERIMENT_NAME,
+    cli_run,
+    log_gpu_memory_status,
+    log_time,
+    make_curve_callback,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -115,6 +121,7 @@ def train(cfg: Config) -> None:
     # ここでは学習本体の所要時間だけ計測してアクティブ run に記録する。
     with log_time("time.train_total_sec"):
         trainer.train()
+    log_gpu_memory_status()  # VRAM ピークと共有メモリ退避(spill)の有無を記録
 
     cfg.model_path.mkdir(parents=True, exist_ok=True)
     model.save_pretrained(str(cfg.model_path))
