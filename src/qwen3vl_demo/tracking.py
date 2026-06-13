@@ -180,6 +180,28 @@ def start_run(
         yield
 
 
+@contextlib.contextmanager
+def cli_run(
+    experiment: str,
+    run_name: str,
+    *,
+    args: argparse.Namespace,
+    cfg: Any,
+    tags: Mapping[str, Any] | None = None,
+) -> Iterator[None]:
+    """CLI 1 実行 = 1 run。**引数解決直後に開き、CLI 終了直前に閉じる**ためのラッパ。
+
+    各 ``main()`` が worker 呼び出し全体をこれで囲むことで、run の実行ウィンドウが
+    モデルロード・データ準備・本処理まで CLI 全体を覆う（System Metrics と所要時間が
+    全工程をカバーする）。起動引数（``args.*``）と解決後の全設定（``cfg.*``）を params に
+    記録し、System Metrics を有効化する。
+    """
+    enable_system_metrics()
+    params = {**args_to_params(args), **config_to_params(cfg)}
+    with start_run(run_name=run_name, params=params, tags=tags, experiment=experiment):
+        yield
+
+
 def log_metrics(metrics: Mapping[str, Any], *, step: int | None = None) -> None:
     """数値メトリクスを現在の run に記録する（キーをサニタイズ、数値以外は無視）。"""
     try:

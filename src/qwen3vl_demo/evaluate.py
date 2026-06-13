@@ -30,14 +30,7 @@ from .config import (
     config_from_args,
 )
 from .models import load_embedding_model
-from .tracking import (
-    Timer,
-    args_to_params,
-    config_to_params,
-    enable_system_metrics,
-    log_metrics,
-    start_run,
-)
+from .tracking import EXPERIMENT_NAME, Timer, cli_run, log_metrics
 
 logger = logging.getLogger(__name__)
 
@@ -160,8 +153,8 @@ def main() -> None:
         label = args.label or "base"
 
     # MLflow: Experiment "evaluate" に 1 run として記録する（Issue #9）。リランクの
-    # Retriever 単体（rerank=none）と同じ土俵に並ぶよう、tags を揃えておく。
-    enable_system_metrics()  # CPU / メモリ / GPU 使用率・VRAM の時系列を収集
+    # Retriever 単体（rerank=none）と同じ土俵に並ぶよう、tags を揃えておく。run は CLI 全体
+    # （モデルロード含む）を覆うよう、ここ（引数解決直後）で開いて終了直前に閉じる。
     tags = {
         "stage": "evaluate",
         "label": label,
@@ -169,9 +162,7 @@ def main() -> None:
         "reranker": "none",
         "variant": "retriever",
     }
-    # 起動引数（args.*）と解決後の全設定（cfg.*）を漏れなく params に残す。
-    params = {**args_to_params(args), **config_to_params(cfg)}
-    with start_run(run_name=label, params=params, tags=tags):
+    with cli_run(EXPERIMENT_NAME, label, args=args, cfg=cfg, tags=tags):
         metrics = evaluate_model(cfg, model_id=model_id, label=label)
         log_metrics(metrics)
 

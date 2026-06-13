@@ -17,7 +17,6 @@
 from __future__ import annotations
 
 import argparse
-import contextlib
 import logging
 
 from datasets import load_from_disk
@@ -32,24 +31,16 @@ from .config import (
 )
 from .evaluate import build_ir_evaluator
 from .models import load_embedding_model
-from .tracking import (
-    TRAIN_EXPERIMENT_NAME,
-    args_to_params,
-    config_to_params,
-    enable_system_metrics,
-    log_time,
-    make_curve_callback,
-    start_run,
-)
+from .tracking import TRAIN_EXPERIMENT_NAME, cli_run, log_time, make_curve_callback
 
 logger = logging.getLogger(__name__)
 
 
-def train(cfg: Config, cli_args: argparse.Namespace | None = None) -> None:
+def train(cfg: Config) -> None:
     """設定に従ってファインチューニングを実行し、モデルを保存する。
 
-    ``cli_args`` を渡すと MLflow Experiment ``"train"`` に run として記録する（学習曲線・
-    System Metrics・所要時間・全設定）。None の場合（テスト等）は記録しない。
+    MLflow 記録は呼び出し側（``main()`` の :func:`cli_run`）が CLI 全体に対して開く run に
+    ぶら下がる（アクティブ run が無ければ各記録は no-op）。学習曲線は TrainerCallback で記録。
     """
     from sentence_transformers import (
         SentenceTransformerTrainer,
@@ -104,8 +95,9 @@ def train(cfg: Config, cli_args: argparse.Namespace | None = None) -> None:
     )
 
     # 学習曲線（loss / eval 指標）を MLflow に step 付きで記録するコールバック（Issue #9）。
+    # アクティブな run が無ければ no-op になるので常に付けてよい。
     callbacks = []
-    if cli_args is not None and (curve_cb := make_curve_callback()) is not None:
+    if (curve_cb := make_curve_callback()) is not None:
         callbacks.append(curve_cb)
 
     trainer = SentenceTransformerTrainer(
@@ -119,18 +111,9 @@ def train(cfg: Config, cli_args: argparse.Namespace | None = None) -> None:
 
     logger.info("%s を %d ペアでファインチューニングします", cfg.embedding.model_id, len(train_ds))
 
-    # MLflow: Experiment "train" に run として記録（学習曲線・System Metrics・所要時間・全設定）。
-    run_ctx = contextlib.nullcontext()
-    if cli_args is not None:
-        enable_system_metrics()
-        params = {**args_to_params(cli_args), **config_to_params(cfg)}
-        run_ctx = start_run(
-            run_name="train",
-            params=params,
-            tags={"stage": "train"},
-            experiment=TRAIN_EXPERIMENT_NAME,
-        )
-    with run_ctx, log_time("time.train_total_sec"):
+    # run（System Metrics・全設定）は main() の cli_run が CLI 全体に対して開く。
+    # ここでは学習本体の所要時間だけ計測してアクティブ run に記録する。
+    with log_time("time.train_total_sec"):
         trainer.train()
 
     cfg.model_path.mkdir(parents=True, exist_ok=True)
@@ -154,7 +137,9 @@ def main() -> None:
     add_train_args(parser)
     args = parser.parse_args()
     cfg = config_from_args(args)
-    train(cfg, cli_args=args)
+    # run は CLI 全体（モデルロード・データ準備・学習）を覆う。
+    with cli_run(TRAIN_EXPERIMENT_NAME, "train", args=args, cfg=cfg, tags={"stage": "train"}):
+        train(cfg)
 
 
 if __name__ == "__main__":
