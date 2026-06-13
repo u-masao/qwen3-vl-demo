@@ -19,6 +19,12 @@ outputs_smoke/
 # HF caches that might land in-tree
 .cache/
 
+# MLflow experiment tracking (SQLite backend + <repo>/mlflow/<exp_id> artifacts)
+mlflow.db
+mlflow.db-*
+mlflow/
+mlruns/
+
 # Claude Code (local, per-developer)
 CLAUDE.md
 

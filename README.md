@@ -133,6 +133,19 @@ Tabs: **📊 Metrics** (embedding base vs fine-tuned bar chart + delta table) /
 main 4 combos, table shows all 6).
 Switch between `outputs` and `outputs_smoke`.
 
+### Experiment tracking (MLflow)
+
+`evaluate` / `rerank` / `train` runs are logged to **MLflow** (SQLite backend
+`mlflow.db`; artifacts under `mlflow/<exp_id>/`). Retriever (`rerank=none`) and
+Reranker variants land in one `evaluate` experiment for side-by-side comparison.
+Each run records the launch args (`args.*`), the full resolved config (`cfg.*`),
+metrics (NDCG / Recall@k / MRR), per-stage timings, peak VRAM, training curves,
+and **system metrics** (CPU / memory / GPU). View them with:
+
+```bash
+uv run mlflow ui --backend-store-uri sqlite:///mlflow.db   # → http://localhost:5000
+```
+
 ### Reproducible runs (DVC, optional)
 
 A [DVC](https://dvc.org/) pipeline ([`dvc.yaml`](dvc.yaml)) declares each stage's

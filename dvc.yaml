@@ -44,6 +44,7 @@ stages:
     cmd: >
       uv run python -m qwen3vl_demo.evaluate
       --profile ${common.profile}
+      --seed ${common.seed}
       --data-dir ${common.paths.data_dir}
       --output-dir ${common.paths.output_dir}
       --embedding-model ${embedding.model_id}
@@ -54,6 +55,7 @@ stages:
     deps:
       - src/qwen3vl_demo/evaluate.py
       - src/qwen3vl_demo/models.py
+      - src/qwen3vl_demo/tracking.py
       - ${common.paths.data_dir}/eval
     metrics:
       - ${common.paths.output_dir}/metrics_base.json:
@@ -97,6 +99,7 @@ stages:
     cmd: >
       uv run python -m qwen3vl_demo.evaluate
       --profile ${common.profile}
+      --seed ${common.seed}
       --data-dir ${common.paths.data_dir}
       --output-dir ${common.paths.output_dir}
       --model-dir ${common.paths.model_dir}
@@ -108,6 +111,7 @@ stages:
     deps:
       - src/qwen3vl_demo/evaluate.py
       - src/qwen3vl_demo/models.py
+      - src/qwen3vl_demo/tracking.py
       - ${common.paths.data_dir}/eval
       - ${common.paths.model_dir}
     metrics:
@@ -156,6 +160,7 @@ stages:
     cmd: >
       uv run python -m qwen3vl_demo.rerank
       --profile ${common.profile}
+      --seed ${common.seed}
       --device ${common.device}
       --data-dir ${common.paths.data_dir}
       --output-dir ${common.paths.output_dir}
@@ -173,6 +178,7 @@ stages:
     deps:
       - src/qwen3vl_demo/models.py
       - src/qwen3vl_demo/rerank.py
+      - src/qwen3vl_demo/tracking.py
       - ${common.paths.data_dir}/eval
       - ${common.paths.model_dir}
       - ${reranker.model_dir}
