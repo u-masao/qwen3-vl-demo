@@ -117,8 +117,11 @@ repro:
 
 # MLflow Web UI を起動（SQLite バックエンド、全インターフェースにバインド）。
 # 既定ポート 5000。ブラウザで http://<ホスト>:5000 を開く。PORT= で変更可。
+# 0.0.0.0 バインドで LAN/WSL2 ホスト IP から開くと、新しい MLflow サーバの CORS/Host 検証が
+# 別オリジン扱いで API を 403 にし UI が INTERNAL_ERROR になる。ローカル用途なので許可を全開にする。
 PORT ?= 5000
 mlflow_ui:
+	MLFLOW_SERVER_ALLOWED_HOSTS='*' MLFLOW_SERVER_CORS_ALLOWED_ORIGINS='*' \
 	$(RUN) mlflow ui --backend-store-uri sqlite:///mlflow.db -h 0.0.0.0 -p $(PORT)
 
 clean:

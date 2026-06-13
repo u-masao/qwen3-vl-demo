@@ -34,3 +34,4 @@ CLAUDE.md
 .DS_Store
 
 *.sw[po]
+nohup.out
