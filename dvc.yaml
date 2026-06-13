@@ -35,6 +35,7 @@ stages:
       - src/qwen3vl_demo/generate_data.py
       - src/qwen3vl_demo/image_cache.py
       - src/qwen3vl_demo/prompts.py
+      - src/qwen3vl_demo/tracking.py
     outs:
       - ${common.paths.data_dir}/train
       - ${common.paths.data_dir}/eval
@@ -44,6 +45,7 @@ stages:
     cmd: >
       uv run python -m qwen3vl_demo.evaluate
       --profile ${common.profile}
+      --seed ${common.seed}
       --data-dir ${common.paths.data_dir}
       --output-dir ${common.paths.output_dir}
       --embedding-model ${embedding.model_id}
@@ -54,6 +56,7 @@ stages:
     deps:
       - src/qwen3vl_demo/evaluate.py
       - src/qwen3vl_demo/models.py
+      - src/qwen3vl_demo/tracking.py
       - ${common.paths.data_dir}/eval
     metrics:
       - ${common.paths.output_dir}/metrics_base.json:
@@ -97,6 +100,7 @@ stages:
     cmd: >
       uv run python -m qwen3vl_demo.evaluate
       --profile ${common.profile}
+      --seed ${common.seed}
       --data-dir ${common.paths.data_dir}
       --output-dir ${common.paths.output_dir}
       --model-dir ${common.paths.model_dir}
@@ -108,6 +112,7 @@ stages:
     deps:
       - src/qwen3vl_demo/evaluate.py
       - src/qwen3vl_demo/models.py
+      - src/qwen3vl_demo/tracking.py
       - ${common.paths.data_dir}/eval
       - ${common.paths.model_dir}
     metrics:
@@ -132,6 +137,7 @@ stages:
       --query-prompt-name ${embedding.query_prompt_name}
       --reranker-model ${reranker.model_id}
       --reranker-dir ${reranker.model_dir}
+      --reranker-max-pixels ${reranker.max_pixels}
       --num-negatives ${reranker.num_negatives}
       --epochs ${train.epochs}
       --batch-size ${train.per_device_batch_size}
@@ -156,6 +162,7 @@ stages:
     cmd: >
       uv run python -m qwen3vl_demo.rerank
       --profile ${common.profile}
+      --seed ${common.seed}
       --device ${common.device}
       --data-dir ${common.paths.data_dir}
       --output-dir ${common.paths.output_dir}
@@ -173,6 +180,7 @@ stages:
     deps:
       - src/qwen3vl_demo/models.py
       - src/qwen3vl_demo/rerank.py
+      - src/qwen3vl_demo/tracking.py
       - ${common.paths.data_dir}/eval
       - ${common.paths.model_dir}
       - ${reranker.model_dir}

@@ -701,9 +701,9 @@ stages:
       --device cuda --dtype bfloat16 --data-dir data --output-dir outputs --model-dir
       outputs/model --embedding-model Qwen/Qwen3-VL-Embedding-2B --attn-impl flash_attention_2
       --max-pixels 200704 --query-prompt-name query --reranker-model Qwen/Qwen3-VL-Reranker-2B
-      --reranker-dir outputs/reranker --num-negatives 3 --epochs 1 --batch-size 4
-      --grad-accum 1 --lr 2e-05 --warmup-ratio 0.1 --gradient-checkpointing true --save-steps
-      50 --logging-steps 10\n"
+      --reranker-dir outputs/reranker --reranker-max-pixels 100352 --num-negatives
+      3 --epochs 1 --batch-size 2 --grad-accum 1 --lr 2e-05 --warmup-ratio 0.1 --gradient-checkpointing
+      true --save-steps 50 --logging-steps 10\n"
     deps:
     - path: data/train
       hash: md5
@@ -712,8 +712,8 @@ stages:
       nfiles: 3
     - path: outputs/model
       hash: md5
-      md5: 85e0a92b0517df87a67ec8ada24f95a2.dir
-      size: 4266716643
+      md5: c1931ce3b5e8b8bff426030d259187cd.dir
+      size: 4266717639
       nfiles: 14
     - path: src/qwen3vl_demo/models.py
       hash: md5
@@ -721,13 +721,13 @@ stages:
       size: 4055
     - path: src/qwen3vl_demo/train_reranker.py
       hash: md5
-      md5: 41d9d4b64a1a6efa7a952bd0a572222d
-      size: 11907
+      md5: 7c6ebd827b0e24f5644d51848332f64c
+      size: 13720
     outs:
     - path: outputs/reranker
       hash: md5
-      md5: 6df72a54d54e1bc9cf9f5c1cb396e21f.dir
-      size: 4266805382
+      md5: e30fb1416e9c53628875af21849cf56d.dir
+      size: 4266835163
       nfiles: 18
   generate_data:
     cmd: "uv run python -m qwen3vl_demo.generate_data --profile default --seed 42
@@ -737,8 +737,8 @@ stages:
     deps:
     - path: src/qwen3vl_demo/generate_data.py
       hash: md5
-      md5: b5abdaa4bd15c8220cbbe2af46d2688a
-      size: 13739
+      md5: 8ced5de07aa0da295e0938b31c62cc4d
+      size: 15768
     - path: src/qwen3vl_demo/image_cache.py
       hash: md5
       md5: 4ec39f199d7d5eabd43686b95ac2bf48
@@ -747,6 +747,10 @@ stages:
       hash: md5
       md5: f0b33ed3e9d51c61c1c20ccd90e70bfa
       size: 7686
+    - path: src/qwen3vl_demo/tracking.py
+      hash: md5
+      md5: 1ffded381d8a1a20452d026fcbaab42d
+      size: 14331
     outs:
     - path: data/eval
       hash: md5
@@ -759,8 +763,8 @@ stages:
       size: 186991687
       nfiles: 3
   eval_base:
-    cmd: "uv run python -m qwen3vl_demo.evaluate --profile default --data-dir data
-      --output-dir outputs --embedding-model Qwen/Qwen3-VL-Embedding-2B --attn-impl
+    cmd: "uv run python -m qwen3vl_demo.evaluate --profile default --seed 42 --data-dir
+      data --output-dir outputs --embedding-model Qwen/Qwen3-VL-Embedding-2B --attn-impl
       flash_attention_2 --max-pixels 200704 --query-prompt-name query --label base\n"
     deps:
     - path: data/eval
@@ -770,12 +774,16 @@ stages:
       nfiles: 3
     - path: src/qwen3vl_demo/evaluate.py
       hash: md5
-      md5: 16e70cbd18847cccbf508f8a3e3b868f
-      size: 6177
+      md5: 71303808994ee589705cc69fb7a1a96b
+      size: 7180
     - path: src/qwen3vl_demo/models.py
       hash: md5
       md5: 864163e85560b211b5dd9621c622e030
       size: 4055
+    - path: src/qwen3vl_demo/tracking.py
+      hash: md5
+      md5: 1ffded381d8a1a20452d026fcbaab42d
+      size: 14331
     outs:
     - path: outputs/metrics_base.json
       hash: md5
@@ -785,7 +793,7 @@ stages:
     cmd: "uv run python -m qwen3vl_demo.train --profile default --seed 42 --device
       cuda --dtype bfloat16 --data-dir data --output-dir outputs --model-dir outputs/model
       --embedding-model Qwen/Qwen3-VL-Embedding-2B --attn-impl flash_attention_2 --max-pixels
-      200704 --query-prompt-name query --epochs 1 --batch-size 4 --grad-accum 1 --lr
+      200704 --query-prompt-name query --epochs 1 --batch-size 2 --grad-accum 1 --lr
       2e-05 --warmup-ratio 0.1 --gradient-checkpointing true --eval-steps 50 --save-steps
       50 --logging-steps 10\n"
     deps:
@@ -801,25 +809,25 @@ stages:
       nfiles: 3
     - path: src/qwen3vl_demo/evaluate.py
       hash: md5
-      md5: 16e70cbd18847cccbf508f8a3e3b868f
-      size: 6177
+      md5: 71303808994ee589705cc69fb7a1a96b
+      size: 7180
     - path: src/qwen3vl_demo/models.py
       hash: md5
       md5: 864163e85560b211b5dd9621c622e030
       size: 4055
     - path: src/qwen3vl_demo/train.py
       hash: md5
-      md5: d982abaa2c049d6c0e5c17e9cf5e9dbe
-      size: 5500
+      md5: a6ceb2d2b134beae9c07088408e89cce
+      size: 6758
     outs:
     - path: outputs/model
       hash: md5
-      md5: 85e0a92b0517df87a67ec8ada24f95a2.dir
-      size: 4266716643
+      md5: c1931ce3b5e8b8bff426030d259187cd.dir
+      size: 4266717639
       nfiles: 14
   eval:
-    cmd: "uv run python -m qwen3vl_demo.evaluate --profile default --data-dir data
-      --output-dir outputs --model-dir outputs/model --embedding-model Qwen/Qwen3-VL-Embedding-2B
+    cmd: "uv run python -m qwen3vl_demo.evaluate --profile default --seed 42 --data-dir
+      data --output-dir outputs --model-dir outputs/model --embedding-model Qwen/Qwen3-VL-Embedding-2B
       --attn-impl flash_attention_2 --max-pixels 200704 --query-prompt-name query
       --finetuned\n"
     deps:
@@ -830,28 +838,33 @@ stages:
       nfiles: 3
     - path: outputs/model
       hash: md5
-      md5: 85e0a92b0517df87a67ec8ada24f95a2.dir
-      size: 4266716643
+      md5: c1931ce3b5e8b8bff426030d259187cd.dir
+      size: 4266717639
       nfiles: 14
     - path: src/qwen3vl_demo/evaluate.py
       hash: md5
-      md5: 16e70cbd18847cccbf508f8a3e3b868f
-      size: 6177
+      md5: 71303808994ee589705cc69fb7a1a96b
+      size: 7180
     - path: src/qwen3vl_demo/models.py
       hash: md5
       md5: 864163e85560b211b5dd9621c622e030
       size: 4055
+    - path: src/qwen3vl_demo/tracking.py
+      hash: md5
+      md5: 1ffded381d8a1a20452d026fcbaab42d
+      size: 14331
     outs:
     - path: outputs/metrics_finetuned.json
       hash: md5
-      md5: b1489c0bad0f78409bb0632e4f69bdb5
-      size: 823
+      md5: 18b3d9dc4c89a8cd52309c39604cbd97
+      size: 854
   rerank:
-    cmd: "uv run python -m qwen3vl_demo.rerank --profile default --device cuda --data-dir
-      data --output-dir outputs --model-dir outputs/model --embedding-model Qwen/Qwen3-VL-Embedding-2B
-      --attn-impl flash_attention_2 --max-pixels 200704 --query-prompt-name query
-      --reranker-model Qwen/Qwen3-VL-Reranker-2B --reranker-dir outputs/reranker --reranker-max-pixels
-      200704 --top-k 10 --relevant-same-category false --num-queries 7\n"
+    cmd: "uv run python -m qwen3vl_demo.rerank --profile default --seed 42 --device
+      cuda --data-dir data --output-dir outputs --model-dir outputs/model --embedding-model
+      Qwen/Qwen3-VL-Embedding-2B --attn-impl flash_attention_2 --max-pixels 200704
+      --query-prompt-name query --reranker-model Qwen/Qwen3-VL-Reranker-2B --reranker-dir
+      outputs/reranker --reranker-max-pixels 100352 --top-k 10 --relevant-same-category
+      false --num-queries 7\n"
     deps:
     - path: data/eval
       hash: md5
@@ -860,13 +873,13 @@ stages:
       nfiles: 3
     - path: outputs/model
       hash: md5
-      md5: 85e0a92b0517df87a67ec8ada24f95a2.dir
-      size: 4266716643
+      md5: c1931ce3b5e8b8bff426030d259187cd.dir
+      size: 4266717639
       nfiles: 14
     - path: outputs/reranker
       hash: md5
-      md5: 6df72a54d54e1bc9cf9f5c1cb396e21f.dir
-      size: 4266805382
+      md5: e30fb1416e9c53628875af21849cf56d.dir
+      size: 4266835163
       nfiles: 18
     - path: src/qwen3vl_demo/models.py
       hash: md5
@@ -874,14 +887,18 @@ stages:
       size: 4055
     - path: src/qwen3vl_demo/rerank.py
       hash: md5
-      md5: 69486bf0211445cefd75d7c736f8e95b
-      size: 17556
+      md5: 3a832c29ab596d3e9eed35a4e49907c7
+      size: 21497
+    - path: src/qwen3vl_demo/tracking.py
+      hash: md5
+      md5: 1ffded381d8a1a20452d026fcbaab42d
+      size: 14331
     outs:
     - path: outputs/rerank_examples.json
       hash: md5
-      md5: c2e25cdcd3ef004621b31a897725a1f5
-      size: 1743
+      md5: 1b7de7c62afd103d8d7a998778786c3c
+      size: 1741
     - path: outputs/rerank_metrics.json
       hash: md5
-      md5: 6e126def0e2b9e1278af07bd4245e167
-      size: 1425
+      md5: 2739cbbb9c415cc62919627108ac6b34
+      size: 1481

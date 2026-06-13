@@ -43,6 +43,7 @@ from .config import (
 )
 from .image_cache import ImageCache, derive_seed
 from .prompts import Sample, build_captions
+from .tracking import DATA_EXPERIMENT_NAME, Timer, cli_run, log_metrics
 
 logger = logging.getLogger(__name__)
 
@@ -77,6 +78,7 @@ def _render_with_cache(
     cfg: Config,
     cache: ImageCache,
     generate_fn: GenerateFn,
+    stats: dict[str, int] | None = None,
 ) -> list[Image.Image]:
     """キャッシュを参照しつつ画像をそろえる。ミス分だけ ``generate_fn`` で生成して書き戻す。
 
@@ -86,6 +88,8 @@ def _render_with_cache(
 
     ``generate_fn`` は画像を 1 枚ずつ yield するので、生成直後に ``cache.put`` する。これにより
     スプリットの全生成完了を待たずに保存され、途中で中断しても生成済みぶんはキャッシュに残る。
+
+    ``stats`` を渡すと ``{"total", "hits", "misses"}`` を書き込む（MLflow 記録用。Issue #9）。
     """
     keys = [
         cache.key(
@@ -115,6 +119,10 @@ def _render_with_cache(
         len(samples),
         len(miss_idx),
     )
+    if stats is not None:
+        stats.update(
+            {"total": len(samples), "hits": len(samples) - len(miss_idx), "misses": len(miss_idx)}
+        )
 
     if miss_idx:
         prompts = [samples[i].text for i in miss_idx]
@@ -239,7 +247,12 @@ def _build_split(samples: list[Sample], images: list[Image.Image]) -> Dataset:
 
 
 def generate_dataset(cfg: Config) -> None:
-    """設定に従って train / eval データセットを生成し、ディスクへ保存する。"""
+    """設定に従って train / eval データセットを生成し、ディスクへ保存する。
+
+    MLflow 記録（所要時間・キャッシュのヒット/ミス・System Metrics・全設定）は呼び出し側
+    （``main()`` の :func:`cli_run`）が CLI 全体に対して開く run にぶら下がる
+    （アクティブ run が無ければ各記録は no-op）。
+    """
     # train と eval で seed をずらし、キャプションが重複しないようにする。
     train_samples = build_captions(cfg.data.num_train, seed=cfg.seed)
     eval_samples = build_captions(cfg.data.num_eval, seed=cfg.seed + 10_000)
@@ -250,22 +263,45 @@ def generate_dataset(cfg: Config) -> None:
     logger.info("train %d 件 + eval %d 件の画像を生成します", cfg.data.num_train, cfg.data.num_eval)
     logger.info("  画像ソース: %s", "スタブ（合成画像）" if use_stub else cfg.image_gen.model_id)
 
+    metrics: dict[str, float] = {"num_train": len(train_samples), "num_eval": len(eval_samples)}
+
     if use_stub:
-        train_images = _generate_stub(train_samples, cfg.data.image_size)
-        eval_images = _generate_stub(eval_samples, cfg.data.image_size)
+        with Timer() as t_all:
+            train_images = _generate_stub(train_samples, cfg.data.image_size)
+            eval_images = _generate_stub(eval_samples, cfg.data.image_size)
+        metrics["time.generate_total_sec"] = t_all.elapsed
     else:
         # 生成画像キャッシュ（同一入力の再生成・モデルロードをスキップ）。
         cache = ImageCache(cfg.image_cache_path, enabled=cfg.image_gen.cache_enabled)
         logger.info("  画像キャッシュ: %s", cache.root if cache.enabled else "無効")
         # パイプラインは 1 度だけロードし、train / eval で共有する（VRAM 二重消費を避ける）。
+        tr_stats: dict[str, int] = {}
+        ev_stats: dict[str, int] = {}
         generate_fn, close = _make_diffusers_generator(cfg)
         try:
             logger.info("train スプリット:")
-            train_images = _render_with_cache(train_samples, cfg, cache, generate_fn)
+            with Timer() as t_train:
+                train_images = _render_with_cache(
+                    train_samples, cfg, cache, generate_fn, stats=tr_stats
+                )
             logger.info("eval スプリット:")
-            eval_images = _render_with_cache(eval_samples, cfg, cache, generate_fn)
+            with Timer() as t_eval:
+                eval_images = _render_with_cache(
+                    eval_samples, cfg, cache, generate_fn, stats=ev_stats
+                )
         finally:
             close()
+        misses = tr_stats.get("misses", 0) + ev_stats.get("misses", 0)
+        metrics.update(
+            {
+                "time.generate_train_sec": t_train.elapsed,
+                "time.generate_eval_sec": t_eval.elapsed,
+                "time.generate_total_sec": t_train.elapsed + t_eval.elapsed,
+                "cache.hits": tr_stats.get("hits", 0) + ev_stats.get("hits", 0),
+                "cache.misses": misses,
+                "cache.generated": misses,  # ミス分だけ実際に生成した枚数
+            }
+        )
 
     train_ds = _build_split(train_samples, train_images)
     eval_ds = _build_split(eval_samples, eval_images)
@@ -279,6 +315,7 @@ def generate_dataset(cfg: Config) -> None:
         len(train_ds),
         len(eval_ds),
     )
+    log_metrics(metrics)
 
 
 def main() -> None:
@@ -295,7 +332,11 @@ def main() -> None:
     add_image_gen_args(parser)
     args = parser.parse_args()
     cfg = config_from_args(args)
-    generate_dataset(cfg)
+    # run は CLI 全体（生成・キャッシュ・保存）を覆う。
+    use_stub = cfg.is_smoke or cfg.image_gen.model_id == "stub"
+    tags = {"stage": "generate_data", "image_source": "stub" if use_stub else cfg.image_gen.model_id}
+    with cli_run(DATA_EXPERIMENT_NAME, "generate_data", args=args, cfg=cfg, tags=tags):
+        generate_dataset(cfg)
 
 
 if __name__ == "__main__":

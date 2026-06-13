@@ -43,6 +43,15 @@ from .config import (
     config_from_args,
 )
 from .models import load_embedding_model
+from .tracking import (
+    EXPERIMENT_NAME,
+    Timer,
+    args_to_params,
+    cli_run,
+    log_gpu_memory_status,
+    log_metrics,
+    start_run,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -194,8 +203,10 @@ def _rerank_candidates(
     queries: list[str],
     corpus_images: list,
     candidate_lists: dict[str, list[list[int]]],
-) -> dict[str, list[list[int]]]:
+) -> tuple[dict[str, list[list[int]]], float | None]:
     """1 つのリランカーで、複数の候補集合（埋め込み別）をまとめて並べ替える（後に解放）。
+
+    戻り値は ``(並べ替え結果, 推論ピーク VRAM[MiB] または None)``。
 
     リランカーのロードは重いので、与えられた全 candidate_lists（base/ft 埋め込み由来）を
     この 1 ロードで処理してから解放し、VRAM を節約する。
@@ -237,15 +248,13 @@ def _rerank_candidates(
         reranked[emb_name] = per_query
 
     # 推論中のピークを記録してから解放する（base/ft の差を診断する手がかり）。
-    peak = _cuda_mem_mb()
-    if peak is not None:
+    peak_mib: float | None = None
+    if _cuda_mem_mb() is not None:
         try:
             import torch
 
-            logger.info(
-                "    [VRAM] ピーク      allocated=%6.0f MiB",
-                torch.cuda.max_memory_allocated() / (1024 * 1024),
-            )
+            peak_mib = torch.cuda.max_memory_allocated() / (1024 * 1024)
+            logger.info("    [VRAM] ピーク      allocated=%6.0f MiB", peak_mib)
             torch.cuda.reset_peak_memory_stats()
         except Exception:  # noqa: BLE001
             pass
@@ -254,7 +263,7 @@ def _rerank_candidates(
     del reranker
     _free()
     _log_mem("解放後")
-    return reranked
+    return reranked, peak_mib
 
 
 def _rank_of(target: int, ordered: list[int]) -> int | None:
@@ -265,8 +274,56 @@ def _rank_of(target: int, ordered: list[int]) -> int | None:
     return None
 
 
-def run_rerank(cfg: Config, num_queries: int = 5) -> None:
-    """6 パターンの 2 段階検索を評価し、メトリクスと事例を保存する。"""
+def _parse_variant_key(key: str) -> tuple[str, str]:
+    """``"embed=ft+rerank=none"`` を ``("ft", "none")`` に分解する。"""
+    parts = dict(p.split("=", 1) for p in key.split("+"))
+    return parts.get("embed", ""), parts.get("rerank", "")
+
+
+def _log_rerank_variants(
+    metrics: dict[str, dict[str, float]],
+    args: argparse.Namespace,
+    top_k: int,
+    timings: dict[str, float],
+) -> None:
+    """6 パターンの各バリアントを、stage run の子 run（nested）として記録する（Issue #9）。
+
+    Retriever（``rerank=none``）と Reranker（``rerank=base/ft``）が同一 Experiment
+    ``evaluate`` 内に並ぶので、MLflow UI で NDCG@k 等を横断比較できる。各 run には精度に加え、
+    該当バリアントの retrieve / rerank 所要時間（``time.*_sec``）も残して速度比較に使う。
+    """
+    base_params = {**args_to_params(args), "top_k": top_k}
+    for key in sorted(metrics):
+        emb, rr = _parse_variant_key(key)
+        variant = "retriever" if rr == "none" else "reranker"
+        tags = {
+            "stage": "rerank",
+            "embedding": emb,
+            "reranker": rr,
+            "variant": variant,
+            "top_k": str(top_k),
+        }
+        with start_run(run_name=key, params=base_params, tags=tags, nested=True):
+            log_metrics(metrics[key])
+            # このバリアントが要した工程の所要時間を抜き出して残す（速度比較用）。
+            variant_time: dict[str, float] = {}
+            if f"time.retrieve.{emb}_sec" in timings:
+                variant_time["time.retrieve_sec"] = timings[f"time.retrieve.{emb}_sec"]
+            if rr != "none" and f"time.rerank.{rr}_sec" in timings:
+                variant_time["time.rerank_sec"] = timings[f"time.rerank.{rr}_sec"]
+            if variant_time:
+                log_metrics(variant_time)
+
+
+def run_rerank(
+    cfg: Config, num_queries: int = 5, args: argparse.Namespace | None = None
+) -> None:
+    """6 パターンの 2 段階検索を評価し、メトリクスと事例を保存する。
+
+    stage 全体の run（System Metrics・全設定）は呼び出し側（``main()`` の :func:`cli_run`）が
+    CLI 全体に対して開く。``args`` を渡すと、その run に各工程の所要時間・VRAM ピークを記録し、
+    各バリアントの精度を子 run（nested）として残す（Issue #9）。None（テスト等）では記録しない。
+    """
     if not cfg.reranker.model_id:
         # スモーク等、リランカー未設定の場合は何もしない。
         logger.info("リランカーが無効（reranker.model_id が null）のためスキップします。")
@@ -297,11 +354,18 @@ def run_rerank(cfg: Config, num_queries: int = 5) -> None:
         "埋め込み: %s / リランカー: %s / top_k=%d", list(emb_variants), list(rr_variants), top_k
     )
 
+    # stage 全体の run（System Metrics・全設定）は main() の cli_run が CLI 全体に対して開く。
+    # ここでは所要時間・VRAM ピークをアクティブ run に記録し、各バリアント精度を子 run に残す。
+    timings: dict[str, float] = {}
+    vram_peaks: dict[str, float] = {}
+
     # --- 第 1 段: 各埋め込みで候補（top_k）を取得（モデルは 1 つずつロード/解放） ---
     candidates: dict[str, list[list[int]]] = {}
     for emb_name, emb_id in emb_variants.items():
         logger.info("  retrieve: 埋め込み=%s (%s)", emb_name, emb_id)
-        candidates[emb_name] = _retrieve_topk(cfg, emb_id, queries, corpus_images, top_k)
+        with Timer() as t:
+            candidates[emb_name] = _retrieve_topk(cfg, emb_id, queries, corpus_images, top_k)
+        timings[f"time.retrieve.{emb_name}_sec"] = t.elapsed
 
     metrics: dict[str, dict[str, float]] = {}
 
@@ -313,7 +377,11 @@ def run_rerank(cfg: Config, num_queries: int = 5) -> None:
     reranked_by_rr: dict[str, dict[str, list[list[int]]]] = {}
     for rr_name, rr_id in rr_variants.items():
         logger.info("  rerank: リランカー=%s (%s)", rr_name, rr_id)
-        reranked = _rerank_candidates(cfg, rr_id, queries, corpus_images, candidates)
+        with Timer() as t:
+            reranked, peak_mib = _rerank_candidates(cfg, rr_id, queries, corpus_images, candidates)
+        timings[f"time.rerank.{rr_name}_sec"] = t.elapsed
+        if peak_mib is not None:
+            vram_peaks[f"vram.rerank.{rr_name}_peak_mib"] = peak_mib
         reranked_by_rr[rr_name] = reranked
         for emb_name, ranked in reranked.items():
             metrics[f"embed={emb_name}+rerank={rr_name}"] = _metrics_for(ranked, relevant, ks)
@@ -332,6 +400,13 @@ def run_rerank(cfg: Config, num_queries: int = 5) -> None:
             "  %-28s NDCG@%d=%.4f  MRR=%.4f", key, top_k, m.get(f"ndcg@{top_k}", 0), m["mrr"]
         )
     logger.info("  メトリクス -> %s", metrics_file)
+
+    # MLflow: stage run（main の cli_run）に所要時間・VRAM ピークを記録し、各バリアント精度を
+    # 子 run に残す（Retriever=rerank none と Reranker を同一 Experiment に並べる。Issue #9）。
+    if args is not None:
+        log_metrics({**timings, **vram_peaks})
+        log_gpu_memory_status()  # プロセス全体の VRAM ピークと共有メモリ退避(spill)の有無
+        _log_rerank_variants(metrics, args, top_k, timings)
 
     # --- 事例: 最良の組（ft があれば ft）でリランク前後を数件保存 ---
     # rank 変動が面白い（リランク前に正解が top-k 圏外 or 順位が変わった）クエリを優先表示。
@@ -397,7 +472,11 @@ def main() -> None:
     )
     args = parser.parse_args()
     cfg = config_from_args(args)
-    run_rerank(cfg, num_queries=args.num_queries)
+    # stage run は CLI 全体（データロード・retrieve・rerank）を覆う。各バリアントは子 run。
+    with cli_run(
+        EXPERIMENT_NAME, "rerank", args=args, cfg=cfg, tags={"stage": "rerank", "variant": "stage"}
+    ):
+        run_rerank(cfg, num_queries=args.num_queries, args=args)
 
 
 if __name__ == "__main__":

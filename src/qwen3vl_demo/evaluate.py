@@ -30,6 +30,7 @@ from .config import (
     config_from_args,
 )
 from .models import load_embedding_model
+from .tracking import EXPERIMENT_NAME, Timer, cli_run, log_metrics
 
 logger = logging.getLogger(__name__)
 
@@ -83,9 +84,13 @@ def evaluate_model(cfg: Config, model_id: str, label: str) -> dict:
     ``label`` は通常 "base"（ベース）/ "finetuned"（FT 後）を使う。
     """
     logger.info("評価 [%s]: %s", label, model_id)
-    model = load_embedding_model(cfg, model_id=model_id)
+    # 大まかな所要時間（モデルロード / 評価本体）を計測して MLflow に残す（処理速度の把握用）。
+    with Timer() as t_load:
+        model = load_embedding_model(cfg, model_id=model_id)
     evaluator = build_ir_evaluator(cfg)
-    metrics = evaluator(model)  # 評価器を呼ぶとメトリクス dict が返る
+    with Timer() as t_eval:
+        metrics = evaluator(model)  # 評価器を呼ぶとメトリクス dict が返る
+    log_metrics({"time.model_load_sec": t_load.elapsed, "time.eval_sec": t_eval.elapsed})
 
     cfg.output_path.mkdir(parents=True, exist_ok=True)
     out_file = cfg.output_path / f"metrics_{label}.json"
@@ -146,7 +151,20 @@ def main() -> None:
     else:
         model_id = args.model or cfg.embedding.model_id
         label = args.label or "base"
-    evaluate_model(cfg, model_id=model_id, label=label)
+
+    # MLflow: Experiment "evaluate" に 1 run として記録する（Issue #9）。リランクの
+    # Retriever 単体（rerank=none）と同じ土俵に並ぶよう、tags を揃えておく。run は CLI 全体
+    # （モデルロード含む）を覆うよう、ここ（引数解決直後）で開いて終了直前に閉じる。
+    tags = {
+        "stage": "evaluate",
+        "label": label,
+        "embedding": "ft" if args.finetuned else "base",
+        "reranker": "none",
+        "variant": "retriever",
+    }
+    with cli_run(EXPERIMENT_NAME, label, args=args, cfg=cfg, tags=tags):
+        metrics = evaluate_model(cfg, model_id=model_id, label=label)
+        log_metrics(metrics)
 
 
 if __name__ == "__main__":

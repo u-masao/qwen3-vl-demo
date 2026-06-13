@@ -40,6 +40,13 @@ from .config import (
     add_train_args,
     config_from_args,
 )
+from .tracking import (
+    TRAIN_EXPERIMENT_NAME,
+    cli_run,
+    log_gpu_memory_status,
+    log_time,
+    make_curve_callback,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -203,7 +210,11 @@ def _build_reranker_dataset(cfg: Config) -> Dataset:
 
 
 def train_reranker(cfg: Config) -> None:
-    """設定に従ってリランカーをファインチューニングし、保存する。"""
+    """設定に従ってリランカーをファインチューニングし、保存する。
+
+    MLflow 記録は呼び出し側（``main()`` の :func:`cli_run`）が CLI 全体に対して開く run に
+    ぶら下がる（アクティブ run が無ければ各記録は no-op）。学習曲線は TrainerCallback で記録。
+    """
     if not cfg.reranker.model_id:
         # スモーク等、リランカー未設定の場合は何もしない（CI でも安全にスキップ）。
         logger.info("リランカーが無効（reranker.model_id が null）のため、学習をスキップします。")
@@ -221,7 +232,13 @@ def train_reranker(cfg: Config) -> None:
     # 膨らみ、16GB カードでは枯渇する（WSL2 では共有メモリへ退避して極端に遅くなる）。
     train_ds = _build_reranker_dataset(cfg)
 
-    model = CrossEncoder(cfg.reranker.model_id, device=cfg.device)
+    # 学習時も画像トークンを max_pixels で上限化し、活性化メモリ（と共有メモリ退避）を抑える。
+    # これが無いと reranker はフル解像度で画像を処理し、16GB を超えて WSL2 の共有メモリへ
+    # 退避→激遅化する（rerank 評価側の Issue #11 対処と同方針を学習側にも適用）。
+    ce_kwargs: dict = {"device": cfg.device}
+    if cfg.reranker.max_pixels:
+        ce_kwargs["processor_kwargs"] = {"max_pixels": cfg.reranker.max_pixels}
+    model = CrossEncoder(cfg.reranker.model_id, **ce_kwargs)
     loss = BinaryCrossEntropyLoss(model)
 
     # Ada では bf16、明示的に float16 指定なら fp16、CPU では混合精度なし。
@@ -251,11 +268,18 @@ def train_reranker(cfg: Config) -> None:
         seed=cfg.seed,
     )
 
+    # 学習曲線（loss / eval 指標）を MLflow に step 付きで記録するコールバック（Issue #9）。
+    # アクティブな run が無ければ no-op になるので常に付けてよい。
+    callbacks = []
+    if (curve_cb := make_curve_callback()) is not None:
+        callbacks.append(curve_cb)
+
     trainer = CrossEncoderTrainer(
         model=model,
         args=args,
         train_dataset=train_ds,
         loss=loss,
+        callbacks=callbacks,
     )
 
     logger.info(
@@ -263,7 +287,12 @@ def train_reranker(cfg: Config) -> None:
         cfg.reranker.model_id,
         len(train_ds),
     )
-    trainer.train()
+
+    # run（System Metrics・全設定）は main() の cli_run が CLI 全体に対して開く。
+    # ここでは学習本体の所要時間だけ計測してアクティブ run に記録する。
+    with log_time("time.train_total_sec"):
+        trainer.train()
+    log_gpu_memory_status()  # VRAM ピークと共有メモリ退避(spill)の有無を記録
 
     cfg.reranker_model_path.mkdir(parents=True, exist_ok=True)
     model.save_pretrained(str(cfg.reranker_model_path))
@@ -285,7 +314,11 @@ def main() -> None:
     add_train_args(parser)
     args = parser.parse_args()
     cfg = config_from_args(args)
-    train_reranker(cfg)
+    # run は CLI 全体（負例マイニング・モデルロード・学習）を覆う。
+    with cli_run(
+        TRAIN_EXPERIMENT_NAME, "train_reranker", args=args, cfg=cfg, tags={"stage": "train_reranker"}
+    ):
+        train_reranker(cfg)
 
 
 if __name__ == "__main__":

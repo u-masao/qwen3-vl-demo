@@ -125,6 +125,18 @@ uv run python app.py        # → http://localhost:7860
 **🔀 2段階検索 (6パターン)**（埋め込み×リランカーの比較。グラフは主要 4 パターン、表は 6 パターン）。
 `outputs` / `outputs_smoke` を切り替えて閲覧できます。
 
+### 実験管理（MLflow）
+
+`generate_data` / `evaluate` / `rerank` / `train` の実行は **MLflow** に記録されます（バックエンドは SQLite の
+`mlflow.db`、artifact は `mlflow/<exp_id>/`）。Retriever（`rerank=none`）と Reranker の各
+バリアントが 1 つの `evaluate` Experiment に並び、横断比較できます。各 run には起動引数
+（`args.*`）・解決後の全設定（`cfg.*`）・メトリクス（NDCG / Recall@k / MRR）・工程別の所要時間・
+ピーク VRAM・学習曲線・**System Metrics**（CPU / メモリ / GPU）が残ります。閲覧:
+
+```bash
+uv run mlflow ui --backend-store-uri sqlite:///mlflow.db   # → http://localhost:5000
+```
+
 ### DVC で再現実行する（任意）
 
 [DVC](https://dvc.org/) パイプライン（[`dvc.yaml`](dvc.yaml)）も用意しています。各ステージの

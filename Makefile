@@ -18,10 +18,10 @@ RUN := uv run
 PY := $(RUN) python -m qwen3vl_demo
 
 .PHONY: setup data eval-base train eval train-reranker rerank all figures smoke \
-        use-default use-smoke use-flux test lint clean help
+        use-default use-smoke use-flux test lint repro mlflow_ui clean help
 
 help:
-	@echo "Targets: setup | data | eval-base | train | eval | train-reranker | rerank | all | figures | smoke | test | lint | clean"
+	@echo "Targets: setup | data | eval-base | train | eval | train-reranker | rerank | all | figures | smoke | test | lint | repro | mlflow_ui | clean"
 	@echo "Profile switch (DVC): use-default | use-smoke | use-flux  (copies params_<x>.yaml -> params.yaml)"
 	@echo "Override direct-run profile with PROFILE=default|smoke|flux (current: $(PROFILE))"
 
@@ -86,6 +86,43 @@ smoke:
 	$(MAKE) train-reranker PROFILE=smoke
 	$(MAKE) rerank PROFILE=smoke
 	@echo "Smoke test complete."
+
+# 再現実行ワークフロー（クリーンなツリーから DVC パイプラインを回し、結果を記録する）:
+#   1) フォーマッタ＆リンタを実行
+#   2) 未コミットの変更があれば中断（整形・修正結果を先にコミットさせる）
+#   3) DVC DAG を PIPELINE.md に書き出してコミット（変更時のみ）
+#   4) dvc repro を実行
+#   5) 正常終了したら dvc.lock をコミット（変更時のみ）
+repro:
+	$(RUN) ruff format src app.py tests
+	$(RUN) ruff check src app.py tests
+	@if [ -n "$$(git status --porcelain)" ]; then \
+	  echo "ERROR: 未コミットの変更があります。整形・修正結果をコミットしてから make repro を再実行してください。"; \
+	  git status --short; \
+	  exit 1; \
+	fi
+	$(RUN) dvc dag --md > PIPELINE.md
+	@if [ -n "$$(git status --porcelain PIPELINE.md)" ]; then \
+	  git add PIPELINE.md && git commit -m "docs: DVC パイプライン図 (PIPELINE.md) を更新"; \
+	else \
+	  echo "PIPELINE.md は最新です。"; \
+	fi
+	$(RUN) dvc repro
+	@if [ -n "$$(git status --porcelain dvc.lock)" ]; then \
+	  git add dvc.lock && git commit -m "chore: dvc repro により dvc.lock を更新"; \
+	else \
+	  echo "dvc.lock に変更はありません。"; \
+	fi
+	@echo "make repro 完了。"
+
+# MLflow Web UI を起動（SQLite バックエンド、全インターフェースにバインド）。
+# 既定ポート 5000。ブラウザで http://<ホスト>:5000 を開く。PORT= で変更可。
+# 0.0.0.0 バインドで LAN/WSL2 ホスト IP から開くと、新しい MLflow サーバの CORS/Host 検証が
+# 別オリジン扱いで API を 403 にし UI が INTERNAL_ERROR になる。ローカル用途なので許可を全開にする。
+PORT ?= 5000
+mlflow_ui:
+	MLFLOW_SERVER_ALLOWED_HOSTS='*' MLFLOW_SERVER_CORS_ALLOWED_ORIGINS='*' \
+	$(RUN) mlflow ui --backend-store-uri sqlite:///mlflow.db -h 0.0.0.0 -p $(PORT)
 
 clean:
 	rm -rf data outputs data_smoke outputs_smoke

@@ -31,12 +31,23 @@ from .config import (
 )
 from .evaluate import build_ir_evaluator
 from .models import load_embedding_model
+from .tracking import (
+    TRAIN_EXPERIMENT_NAME,
+    cli_run,
+    log_gpu_memory_status,
+    log_time,
+    make_curve_callback,
+)
 
 logger = logging.getLogger(__name__)
 
 
 def train(cfg: Config) -> None:
-    """設定に従ってファインチューニングを実行し、モデルを保存する。"""
+    """設定に従ってファインチューニングを実行し、モデルを保存する。
+
+    MLflow 記録は呼び出し側（``main()`` の :func:`cli_run`）が CLI 全体に対して開く run に
+    ぶら下がる（アクティブ run が無ければ各記録は no-op）。学習曲線は TrainerCallback で記録。
+    """
     from sentence_transformers import (
         SentenceTransformerTrainer,
         SentenceTransformerTrainingArguments,
@@ -89,16 +100,28 @@ def train(cfg: Config) -> None:
         seed=cfg.seed,
     )
 
+    # 学習曲線（loss / eval 指標）を MLflow に step 付きで記録するコールバック（Issue #9）。
+    # アクティブな run が無ければ no-op になるので常に付けてよい。
+    callbacks = []
+    if (curve_cb := make_curve_callback()) is not None:
+        callbacks.append(curve_cb)
+
     trainer = SentenceTransformerTrainer(
         model=model,
         args=args,
         train_dataset=train_ds,
         loss=loss,
         evaluator=evaluator,
+        callbacks=callbacks,
     )
 
     logger.info("%s を %d ペアでファインチューニングします", cfg.embedding.model_id, len(train_ds))
-    trainer.train()
+
+    # run（System Metrics・全設定）は main() の cli_run が CLI 全体に対して開く。
+    # ここでは学習本体の所要時間だけ計測してアクティブ run に記録する。
+    with log_time("time.train_total_sec"):
+        trainer.train()
+    log_gpu_memory_status()  # VRAM ピークと共有メモリ退避(spill)の有無を記録
 
     cfg.model_path.mkdir(parents=True, exist_ok=True)
     model.save_pretrained(str(cfg.model_path))
@@ -121,7 +144,9 @@ def main() -> None:
     add_train_args(parser)
     args = parser.parse_args()
     cfg = config_from_args(args)
-    train(cfg)
+    # run は CLI 全体（モデルロード・データ準備・学習）を覆う。
+    with cli_run(TRAIN_EXPERIMENT_NAME, "train", args=args, cfg=cfg, tags={"stage": "train"}):
+        train(cfg)
 
 
 if __name__ == "__main__":
