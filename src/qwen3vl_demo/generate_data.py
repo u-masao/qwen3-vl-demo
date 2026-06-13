@@ -9,15 +9,16 @@ prompts.py が作ったキャプション 1 文ごとに、対応する画像を
 結果は ``datasets.Dataset`` の 2 スプリットとして ``<data_dir>/train`` と
 ``<data_dir>/eval`` に保存する。各行のカラムは以下:
 
-  * ``anchor``   (str)   キャプション ＝ 検索クエリ文
+  * ``anchor``   (str)   キャプション ＝ 画像生成プロンプト（学習・評価のクエリには使わない）
   * ``positive`` (Image) レンダリングした画像 ＝ 検索のターゲット
   * ``category`` (str)   被写体カテゴリ（緩い評価のオプションで使用）
   * ``subject``  (str)   被写体単語（"cat" など）
-  * ``persona``  (str)   ペルソナ名（"user_alpha" など）＝ 嗜好ベース検索のクエリ
+  * ``persona``  (str)   ペルソナ名（"user_alpha" など）＝ 嗜好ベース検索のクエリ／ラベル
 
 カラム名の ``anchor`` / ``positive`` は Sentence Transformers の対照学習
-（MultipleNegativesRankingLoss）が期待する慣習的な名前に合わせてある。詳しくは
-train.py を参照。
+（MultipleNegativesRankingLoss）が期待する慣習的な名前に合わせてある。ただし学習時は
+train.py が ``persona`` 列を ``anchor`` に昇格させ、(ペルソナ名, 画像) のペアで学習する。
+詳しくは train.py を参照。
 """
 
 from __future__ import annotations

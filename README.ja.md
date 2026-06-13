@@ -4,7 +4,7 @@
 
 **合成データだけで「画像検索の精度が上がる」体験**を、最小構成で一気通貫に再現するデモです。
 
-1. 🎨 **データ生成** — 画像生成モデル [FLUX.2-klein-4B](https://huggingface.co/black-forest-labs/FLUX.2-klein-4B) で、キャプション付き画像データセットを自動生成（キャプション＝そのまま検索クエリの正解になる）
+1. 🎨 **データ生成** — 画像生成モデル [FLUX.2-klein-4B](https://huggingface.co/black-forest-labs/FLUX.2-klein-4B) で、キャプション付き画像データセットを自動生成し、手書きの**ペルソナ→被写体**嗜好マップで各画像を自動ラベリング（ペルソナ名＝検索クエリ、その画像群＝正解）
 2. 📐 **ベース評価** — [Qwen3-VL-Embedding-2B](https://huggingface.co/Qwen/Qwen3-VL-Embedding-2B) のテキスト→画像検索精度（NDCG / Recall@k）を測定
 3. 🔧 **ファインチューニング** — [Sentence Transformers](https://sbert.net) で埋め込みモデルを合成ペアに適応
 4. 📈 **再評価** — 学習前後で検索精度を比較
@@ -13,21 +13,24 @@
 ```mermaid
 flowchart LR
     C["caption<br/>（テキスト）"] -->|FLUX.2-klein| I["画像"]
-    C --> P["(text, image)<br/>ペア"]
+    C -->|被写体 → ペルソナ| Q["persona<br/>（クエリ）"]
+    Q --> P["(persona, image)<br/>ペア"]
     I --> P
     P -->|fine-tune| E["Qwen3-VL-<br/>Embedding-2B"]
-    E --> R["改善した<br/>テキスト→画像検索"]
+    E --> R["改善した<br/>ペルソナ→画像検索"]
     R -->|上位を再ランク| RR["Qwen3-VL-<br/>Reranker-2B（FT）"]
 ```
 
-> なぜ面白いか: **人手アノテーション不要**。画像生成のプロンプトがそのまま「正解ラベル付きのクエリ」になるので、
-> 検索モデルの学習データがタダで無限に作れる、という発想のデモです。
+> なぜ面白いか: **人手アノテーション不要**。キャプションはテンプレートから生成し、各画像は手書きの
+> ペルソナ→被写体の嗜好マップで自動ラベリングするので、検索モデルの学習データがタダで無限に作れます。
+> この対応はあえて恣意的（例: `user_alpha` は猫・ピザ・バイクを好む）なので、事前学習済みモデルには
+> 解けず、ファインチューニングして初めて学習できる、という点が面白いデモです。
 
 ---
 
 ## 実例
 
-**合成データセット** — FLUX.2-klein が生成したキャプション付き画像（キャプション＝その画像の正解クエリ）:
+**合成データセット** — FLUX.2-klein が生成したキャプション付き画像（各画像のキャプションは、その画像の生成プロンプト）:
 
 ![合成データセットのサンプル](docs/images/sample_grid.png)
 
@@ -239,8 +242,9 @@ make lint      # ruff
 - `SUBJECTS`（カテゴリ付き被写体: animal / vehicle / food / scene / object）
 - `ADJECTIVES`（形容詞）／ `SETTINGS`（情景）／ `TEMPLATES`（文型）
 
-例: `"a fluffy photo of a cat on a wooden table"`。この文がそのまま
-① FLUX.2-klein へのプロンプト と ② 検索評価の正解クエリ の両方になります。
+例: `"a fluffy photo of a cat on a wooden table"`。この文は FLUX.2-klein への
+プロンプトであり、含まれる**被写体**（`cat`）が `PERSONA_MAP` でペルソナに対応づけられ、
+そのペルソナ名（`user_alpha`）が検索評価の正解クエリ／ラベルになります。
 件数・seed は config で制御し、train と eval は別 seed で重複しないようにしています。
 
 ---

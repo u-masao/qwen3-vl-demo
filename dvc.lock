@@ -737,16 +737,16 @@ stages:
     deps:
     - path: src/qwen3vl_demo/generate_data.py
       hash: md5
-      md5: 1319c9aabe27b594b134e03aff071881
-      size: 13530
+      md5: b5abdaa4bd15c8220cbbe2af46d2688a
+      size: 13739
     - path: src/qwen3vl_demo/image_cache.py
       hash: md5
       md5: 4ec39f199d7d5eabd43686b95ac2bf48
       size: 4420
     - path: src/qwen3vl_demo/prompts.py
       hash: md5
-      md5: 5670ebfe525f078f0f9d9d1f26524d87
-      size: 7546
+      md5: f0b33ed3e9d51c61c1c20ccd90e70bfa
+      size: 7686
     outs:
     - path: data/eval
       hash: md5

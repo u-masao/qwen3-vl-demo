@@ -8,8 +8,9 @@
 ## 1. 目的とスコープ
 
 ### 目的
-画像生成モデルが作る (キャプション, 画像) ペアを学習データとして使い、
-マルチモーダル埋め込みモデル（Qwen3-VL-Embedding-2B）の **テキスト→画像検索** 精度を
+画像生成モデルが作る画像に、ペルソナ嗜好マップで自動ラベルを付けた
+(ペルソナ名, 画像) ペアを学習データとして使い、マルチモーダル埋め込みモデル
+（Qwen3-VL-Embedding-2B）の **テキスト（ペルソナ）→画像検索** 精度を
 ファインチューニングで向上させられることを、一気通貫で体験できるデモを提供する。
 
 ### スコープに含むもの
@@ -86,12 +87,17 @@ first-level キー（`common` / `data` / `image_gen` / `embedding` / `reranker` 
 | `image_gen.num_inference_steps` | int | `4` | 拡散ステップ数（FLUX.2-klein は 4 ステップ） |
 | `image_gen.guidance_scale` | float | `1.0` | FLUX.2-klein の推奨値 |
 | `image_gen.batch_size` | int | `1` | VRAM 節約のため 1 に設定 |
+| `image_gen.cache_enabled` | bool | `true` | 同一入力の生成画像をキャッシュして再生成をスキップ |
+| `image_gen.cache_dir` | str | `.cache/imggen` | 生成画像キャッシュの保存先（VCS 非追跡） |
 | `embedding.model_id` | str | `Qwen/Qwen3-VL-Embedding-2B` | 埋め込みモデル |
 | `embedding.attn_implementation` | str | `flash_attention_2` | 失敗時は自動フォールバック |
-| `embedding.max_pixels` | int\|null | `null` | 画像トークン上限（VRAM 節約） |
+| `embedding.max_pixels` | int\|null | `200704` | 画像トークン上限（VRAM 節約。`null` で無制限） |
 | `embedding.query_prompt_name` | str\|null | `query` | クエリ用 instruction prompt 名（Qwen3-VL 推奨値） |
 | `reranker.model_id` | str\|null | `Qwen/Qwen3-VL-Reranker-2B` | `null` でリランクをスキップ |
 | `reranker.top_k` | int | `10` | リランク対象の上位件数 |
+| `reranker.model_dir` | str | `outputs/reranker` | FT 済みリランカーの保存先 |
+| `reranker.num_negatives` | int | `3` | リランカー学習時の正例あたり負例数 |
+| `reranker.max_pixels` | int\|null | `200704` | リランク時の画像トークン上限（`null` で無制限。Issue #11） |
 | `train.epochs` | int | `1` | エポック数 |
 | `train.per_device_batch_size` | int | `4` | バッチサイズ（MNRL の負例数に直結） |
 | `train.gradient_accumulation_steps` | int | `1` | 勾配累積 |

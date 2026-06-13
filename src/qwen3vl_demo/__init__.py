@@ -6,9 +6,9 @@
 
 パイプライン全体像::
 
-    1. generate_data  キャプションから FLUX.2-klein で画像を生成し、(text, image) の
-                      データセットを作る（キャプション＝検索クエリの正解になる）
-    2. evaluate       テキスト→画像検索の精度（NDCG / Recall@k など）を測定する
+    1. generate_data  キャプションから FLUX.2-klein で画像を生成し、ペルソナ嗜好で
+                      自動ラベル付けしたデータセットを作る（ペルソナ名＝検索クエリ）
+    2. evaluate       ペルソナ→画像検索の精度（NDCG / Recall@k など）を測定する
     3. train          Qwen3-VL-Embedding-2B を Sentence Transformers で微調整する
     4. rerank         検索の上位候補を Qwen3-VL-Reranker-2B で並べ替えて仕上げる
 
