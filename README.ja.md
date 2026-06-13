@@ -127,7 +127,7 @@ uv run python app.py        # → http://localhost:7860
 
 ### 実験管理（MLflow）
 
-`evaluate` / `rerank` / `train` の実行は **MLflow** に記録されます（バックエンドは SQLite の
+`generate_data` / `evaluate` / `rerank` / `train` の実行は **MLflow** に記録されます（バックエンドは SQLite の
 `mlflow.db`、artifact は `mlflow/<exp_id>/`）。Retriever（`rerank=none`）と Reranker の各
 バリアントが 1 つの `evaluate` Experiment に並び、横断比較できます。各 run には起動引数
 （`args.*`）・解決後の全設定（`cfg.*`）・メトリクス（NDCG / Recall@k / MRR）・工程別の所要時間・

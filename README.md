@@ -135,7 +135,7 @@ Switch between `outputs` and `outputs_smoke`.
 
 ### Experiment tracking (MLflow)
 
-`evaluate` / `rerank` / `train` runs are logged to **MLflow** (SQLite backend
+`generate_data` / `evaluate` / `rerank` / `train` runs are logged to **MLflow** (SQLite backend
 `mlflow.db`; artifacts under `mlflow/<exp_id>/`). Retriever (`rerank=none`) and
 Reranker variants land in one `evaluate` experiment for side-by-side comparison.
 Each run records the launch args (`args.*`), the full resolved config (`cfg.*`),

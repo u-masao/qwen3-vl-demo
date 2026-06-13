@@ -35,6 +35,7 @@ stages:
       - src/qwen3vl_demo/generate_data.py
       - src/qwen3vl_demo/image_cache.py
       - src/qwen3vl_demo/prompts.py
+      - src/qwen3vl_demo/tracking.py
     outs:
       - ${common.paths.data_dir}/train
       - ${common.paths.data_dir}/eval

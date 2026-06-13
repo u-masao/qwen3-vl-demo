@@ -36,9 +36,10 @@ from typing import Any
 
 logger = logging.getLogger(__name__)
 
-# 評価系を集約する Experiment 名 / 学習系の Experiment 名。
+# 評価系 / 学習系 / データ生成の Experiment 名。
 EXPERIMENT_NAME = "evaluate"
 TRAIN_EXPERIMENT_NAME = "train"
+DATA_EXPERIMENT_NAME = "generate_data"
 
 # MLflow のキーで許可されない文字（英数・``_`` ``-`` ``.`` ``/`` 空白 ``:`` 以外）を ``_`` に置換する。
 # 例: ``ndcg@10`` の ``@`` は不許可なので ``ndcg_at_10`` にしてから残りをサニタイズする。
