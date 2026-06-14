@@ -126,10 +126,10 @@ def _parse_data_pref(argv: list[str]) -> argparse.Namespace:
     return parser.parse_args(argv)
 
 
-def test_default_task_is_subject():
-    # 既定は既存タスク（preference を有効化しない限り回帰なし）。
+def test_default_task_is_preference():
+    # 既定は preference（gamma=2.0）。subject は --task subject の legacy opt-in。
     cfg = load_config(REPO_ROOT / "params_default.yaml")
-    assert cfg.data.task == "subject"
+    assert cfg.data.task == "preference"
     assert cfg.preference.gamma == 2.0
     assert cfg.preference.lam == 0.3
 

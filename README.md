@@ -4,7 +4,7 @@
 
 A minimal, end-to-end demo that shows how **synthetic data alone can improve image retrieval**.
 
-1. 🎨 **Generate data** — use the text-to-image model [FLUX.2-klein-4B](https://huggingface.co/black-forest-labs/FLUX.2-klein-4B) to synthesize a captioned image dataset, auto-labelled by a hand-written **persona → subject** preference map (each persona name is the retrieval query; its images are the targets)
+1. 🎨 **Generate data** — use the text-to-image model [FLUX.2-klein-4B](https://huggingface.co/black-forest-labs/FLUX.2-klein-4B) to synthesize a captioned image dataset whose visual attributes are drawn from a **human-like latent preference model**, then auto-label each image with the persona that most prefers it (**argmax appeal**). Each persona name is the retrieval query; its images are the targets.
 2. 📐 **Baseline eval** — measure text→image retrieval quality (NDCG / Recall@k) of [Qwen3-VL-Embedding-2B](https://huggingface.co/Qwen/Qwen3-VL-Embedding-2B)
 3. 🔧 **Fine-tune** — adapt the embedding model to the synthetic pairs with [Sentence Transformers](https://sbert.net)
 4. 📈 **Re-eval** — compare retrieval quality before vs after fine-tuning
@@ -12,8 +12,9 @@ A minimal, end-to-end demo that shows how **synthetic data alone can improve ima
 
 ```mermaid
 flowchart LR
-    C["caption<br/>(text)"] -->|FLUX.2-klein| I["image"]
-    C -->|subject → persona| Q["persona<br/>(query)"]
+    PM["latent preference model<br/>(7 taste axes, non-additive)"] -->|sample| A["image attributes"]
+    A -->|caption + FLUX.2-klein| I["image"]
+    A -->|argmax appeal| Q["persona<br/>(query)"]
     Q --> P["(persona, image)<br/>pair"]
     I --> P
     P -->|fine-tune| E["Qwen3-VL-<br/>Embedding-2B"]
@@ -21,12 +22,17 @@ flowchart LR
     R -->|rerank top-k| RR["Qwen3-VL-<br/>Reranker-2B (fine-tuned)"]
 ```
 
-> **Why it's neat:** **no human annotation needed.** Captions are generated from
-> templates and each image is auto-labelled via a hand-written persona→subject
-> preference map, so you can mint training data for a retrieval model essentially
-> for free. The mapping is deliberately arbitrary (e.g. `user_alpha` likes cats,
-> pizza, motorcycles…), so a pretrained model can't solve the task — fine-tuning
-> has to teach it.
+> **Why it's neat:** **no human annotation needed.** Each image's visual attributes
+> are sampled from a small **latent preference model** (taste axes like warm / vintage /
+> ornate, mixed per persona), and its label is whichever persona's taste it best
+> matches — so training data is essentially free. Crucially the preference is
+> **non-additive** (e.g. *warm* and *ornate* are each liked, but *warm ∧ ornate*
+> together is disliked): a bi-encoder's dot product can't express that, but a
+> cross-encoder **reranker can** — so the two-stage pipeline has real headroom
+> (see [Results](#results)). The query stays an opaque token (`user_alpha`), so a
+> pretrained model can't solve it — fine-tuning has to teach it. (A simpler legacy
+> `subject` task — `user_alpha` likes cats, pizza, motorcycles… — is still available
+> via `--task subject`.)
 
 > 📖 The detailed design docs under [`docs/`](docs/) are written in Japanese.
 > A Japanese version of this README is available at [README.ja.md](README.ja.md).
@@ -261,17 +267,25 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for how to contribute.
 ## How captions are generated
 
 Training captions are synthesized in
-[`src/qwen3vl_demo/prompts.py`](src/qwen3vl_demo/prompts.py) by combining
-**hand-written word lists × sentence templates** (no external deps, reproducible by seed).
+[`src/qwen3vl_demo/prompts.py`](src/qwen3vl_demo/prompts.py) (no external deps,
+reproducible by seed). The **default `preference` task** works like this:
 
-- `SUBJECTS` (subjects with categories: animal / vehicle / food / scene / object)
-- `ADJECTIVES`, `SETTINGS`, `TEMPLATES`
+1. Sample binary **taste attributes** from a persona's preference distribution
+   (`src/qwen3vl_demo/preference.py`: 7 axes — warmth / era / ornament / mood /
+   saturation / material / setting).
+2. Pick a random **subject** (independent of the attributes, so looks vary while
+   taste stays consistent), and turn the attributes into prompt fragments:
+   `"a photo of a cat, warm-toned, vintage, ornate intricately detailed, …"`.
+3. Label the image with the persona that **most prefers** those attributes
+   (`argmax appeal`) — which, thanks to non-additive interactions, can differ from
+   the persona that generated them. That persona name (`user_alpha`) is the
+   ground-truth retrieval query/label.
 
-Example: `"a fluffy photo of a cat on a wooden table"`. This string is the
-FLUX.2-klein prompt; its **subject** (`cat`) is mapped to a persona via `PERSONA_MAP`,
-and that persona name (`user_alpha`) becomes the ground-truth retrieval query/label.
 Counts and seeds are config-driven; train and eval use different seeds so their
-captions never overlap.
+captions never overlap. The legacy **`subject` task** (`--task subject`) instead
+combines `SUBJECTS` × `ADJECTIVES` × `SETTINGS` × `TEMPLATES`
+(e.g. `"a fluffy photo of a cat on a wooden table"`) and labels via a fixed
+subject→persona map.
 
 ---
 
@@ -303,23 +317,29 @@ See [Architecture](docs/architecture.md) for module responsibilities and depende
 
 ## Results
 
-**Setup** — synthetic text→image retrieval eval set generated by this pipeline:
-**200 images (corpus), 200 persona queries** spanning 7 personas / 5 categories.
-Each query's relevant set is *every* image sharing its persona (~29 on average),
-which is why absolute Recall@1 stays low even at perfect ranking. Measured on the
-default **NVIDIA RTX 4060 Ti 16GB**, one epoch of training each. Reproduce with
-`make all` and read `outputs/metrics_*.json` / `outputs/rerank_metrics.json`.
+**Setup** — synthetic text→image retrieval eval set generated by this pipeline
+with the default **`preference` task (`gamma=2.0`)**: **200 images (corpus), 200
+persona queries** over 7 personas. Each query's relevant set is *every* image
+whose **argmax-appeal persona** matches (10–59 per persona, ~29 on average), which
+is why absolute Recall@1 stays low even at perfect ranking. Measured on the default
+**NVIDIA RTX 4060 Ti 16GB**, one epoch of training each. Reproduce with `make all`
+and read `outputs/metrics_*.json` / `outputs/rerank_metrics.json`. Full analysis
+incl. the `gamma=0` (additive) ablation:
+[docs/experiment_report_preference_gamma_sweep.md](docs/experiment_report_preference_gamma_sweep.md).
 
 ### Embedding retrieval — Base vs Fine-tuned
 
 | Model | Acc@1 | Acc@10 | NDCG@10 | MRR@10 | MAP@100 | Recall@10 |
 |---|---|---|---|---|---|---|
-| Base (Qwen3-VL-Embedding-2B) | 0.130 | 0.715 | 0.180 | 0.247 | 0.114 | 0.070 |
-| Fine-tuned | **1.000** | **1.000** | **0.985** | **1.000** | **0.921** | **0.345** |
+| Base (Qwen3-VL-Embedding-2B) | 0.190 | 0.765 | 0.133 | 0.273 | 0.106 | 0.035 |
+| Fine-tuned | **0.530** | **1.000** | **0.647** | **0.703** | **0.492** | **0.208** |
 
 *Acc@k = share of queries with a correct image in the top-k.* A single epoch of
-fine-tuning lifts NDCG@10 from **0.180 → 0.985**. Evaluating one model over the
-set takes **~165 s** on the RTX 4060 Ti (`eval_runtime` from the training log).
+fine-tuning lifts NDCG@10 from **0.133 → 0.647**. Base Acc@1 = 0.19 is near the
+7-persona random level (≈0.143), confirming the task is unsolvable without
+fine-tuning. Unlike the legacy `subject` task (which saturated at NDCG@10 ≈ 0.985),
+the preference task leaves the embedder **below ceiling** — which is exactly what
+gives the reranker room to help.
 
 ### Two-stage pipeline — embedding × reranker
 
@@ -329,20 +349,19 @@ is fixed by the embedding stage; reranking moves relevant hits up the list
 
 | Embedding | Reranker | NDCG@1 | NDCG@5 | NDCG@10 | MRR | Recall@10 |
 |---|---|---|---|---|---|---|
-| Base | none | 0.130 | 0.137 | 0.180 | 0.247 | 0.070 |
-| Base | Base | 0.130 | 0.216 | 0.199 | 0.333 | 0.070 |
-| Base | Fine-tuned | 0.130 | 0.139 | 0.181 | 0.279 | 0.070 |
-| Fine-tuned | none | 1.000 | 0.977 | 0.985 | 1.000 | 0.345 |
-| Fine-tuned | Base | 0.865 | 0.954 | 0.970 | 0.933 | 0.345 |
-| **Fine-tuned** | **Fine-tuned** | **1.000** | **1.000** | **0.991** | **1.000** | **0.345** |
+| Base | none | 0.190 | 0.089 | 0.122 | 0.273 | 0.030 |
+| Base | Base | 0.000 | 0.052 | 0.094 | 0.131 | 0.030 |
+| Base | Fine-tuned | 0.000 | 0.108 | 0.106 | 0.167 | 0.030 |
+| Fine-tuned | none | 0.530 | 0.644 | 0.646 | 0.703 | 0.208 |
+| Fine-tuned | Base | 0.760 | 0.639 | 0.654 | 0.820 | 0.208 |
+| **Fine-tuned** | **Fine-tuned** | **0.790** | **0.696** | **0.680** | **0.860** | 0.208 |
 
-The fully fine-tuned pipeline wins on every ordering metric. Note that a *base*
-reranker on top of the fine-tuned embedder actually **hurts** NDCG@1 (1.000 →
-0.865): reranking pays off only once the reranker itself is adapted to the
-domain.
-
-For reference, the official Sentence Transformers Visual Document Retrieval
-example reports fine-tuning this model improving NDCG@10 from 0.888 → 0.947.
+Now the reranker **helps**: a fine-tuned reranker on top of the fine-tuned embedder
+lifts **MRR 0.703 → 0.860 (+0.157)** and **NDCG@1 0.530 → 0.790 (+0.26)**. This is
+the payoff of the preference task's non-additive structure — the *opposite* of the
+legacy subject task, where reranking only hurt (the `gamma=0` additive ablation
+reproduces that: reranker ΔMRR ≈ −0.005). Reranking a broken *base*-embedding
+retrieval still can't help (top rows): the reranker needs a sane candidate set.
 
 ---
 
