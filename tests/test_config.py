@@ -10,6 +10,8 @@ from qwen3vl_demo.config import (
     Config,
     add_common_args,
     add_config_args,
+    add_data_args,
+    add_preference_args,
     add_train_args,
     config_from_args,
     load_config,
@@ -77,7 +79,18 @@ def _parse(argv: list[str]) -> argparse.Namespace:
 def test_cli_overrides_applied():
     # ベースは default プロファイル、--epochs / --lr / --seed / --data-dir を上書き。
     args = _parse(
-        ["--profile", "default", "--epochs", "3", "--lr", "1e-4", "--seed", "7", "--data-dir", "tmp_data"]
+        [
+            "--profile",
+            "default",
+            "--epochs",
+            "3",
+            "--lr",
+            "1e-4",
+            "--seed",
+            "7",
+            "--data-dir",
+            "tmp_data",
+        ]
     )
     cfg = config_from_args(args)
     assert cfg.profile == "default"
@@ -102,3 +115,41 @@ def test_bool_override_value_style():
     args = _parse(["--profile", "default", "--gradient-checkpointing", "false"])
     cfg = config_from_args(args)
     assert cfg.train.gradient_checkpointing is False
+
+
+def _parse_data_pref(argv: list[str]) -> argparse.Namespace:
+    parser = argparse.ArgumentParser()
+    add_config_args(parser)
+    add_common_args(parser)
+    add_data_args(parser)
+    add_preference_args(parser)
+    return parser.parse_args(argv)
+
+
+def test_default_task_is_preference():
+    # 既定は preference（gamma=2.0）。subject は --task subject の legacy opt-in。
+    cfg = load_config(REPO_ROOT / "params_default.yaml")
+    assert cfg.data.task == "preference"
+    assert cfg.preference.gamma == 2.0
+    assert cfg.preference.lam == 0.3
+
+
+def test_task_and_preference_overrides():
+    # data.task と preference.* が CLI で上書きでき、未指定はベース YAML のままになる。
+    args = _parse_data_pref(
+        [
+            "--profile",
+            "default",
+            "--task",
+            "preference",
+            "--pref-gamma",
+            "3.5",
+            "--pref-sigma",
+            "0.0",
+        ]
+    )
+    cfg = config_from_args(args)
+    assert cfg.data.task == "preference"
+    assert cfg.preference.gamma == 3.5
+    assert cfg.preference.sigma == 0.0
+    assert cfg.preference.lam == 0.3  # 未指定はベース値のまま

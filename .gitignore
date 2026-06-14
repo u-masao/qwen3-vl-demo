@@ -16,6 +16,9 @@ data_smoke/
 outputs/
 outputs_smoke/
 
+# Issue #15 gamma スイープ検証の生データ（解析用に手元保持・PR には含めない）
+verify_issue15/
+
 # HF caches that might land in-tree
 .cache/
 

@@ -707,13 +707,13 @@ stages:
     deps:
     - path: data/train
       hash: md5
-      md5: 3ebca352324c80e63f887f1519ff625b.dir
-      size: 186991687
+      md5: e38721318a7df4f54b7b90d1dd154179.dir
+      size: 187717135
       nfiles: 3
     - path: outputs/model
       hash: md5
-      md5: c1931ce3b5e8b8bff426030d259187cd.dir
-      size: 4266717639
+      md5: bdd4b3f62e2e71c05638557eee373c8b.dir
+      size: 4266679480
       nfiles: 14
     - path: src/qwen3vl_demo/models.py
       hash: md5
@@ -726,27 +726,32 @@ stages:
     outs:
     - path: outputs/reranker
       hash: md5
-      md5: e30fb1416e9c53628875af21849cf56d.dir
-      size: 4266835163
+      md5: dbac2428a2eb0a2544a1364eb5aae763.dir
+      size: 4266677373
       nfiles: 18
   generate_data:
     cmd: "uv run python -m qwen3vl_demo.generate_data --profile default --seed 42
       --device cuda --dtype bfloat16 --data-dir data --num-train 500 --num-eval 200
-      --image-size 512 --image-model black-forest-labs/FLUX.2-klein-4B --steps 4 --guidance-scale
-      1.0 --image-batch-size 1 --image-cache true --cache-dir .cache/imggen\n"
+      --image-size 512 --task preference --pref-gamma 2.0 --pref-lam 0.3 --pref-sigma
+      0.1 --pref-sharpness 2.0 --image-model black-forest-labs/FLUX.2-klein-4B --steps
+      4 --guidance-scale 1.0 --image-batch-size 1 --image-cache true --cache-dir .cache/imggen\n"
     deps:
     - path: src/qwen3vl_demo/generate_data.py
       hash: md5
-      md5: 8ced5de07aa0da295e0938b31c62cc4d
-      size: 15768
+      md5: 211f5bb39786df20611a59754c8b597c
+      size: 16952
     - path: src/qwen3vl_demo/image_cache.py
       hash: md5
       md5: 4ec39f199d7d5eabd43686b95ac2bf48
       size: 4420
+    - path: src/qwen3vl_demo/preference.py
+      hash: md5
+      md5: ba6f26c583c7439c28aaa22f30d93142
+      size: 16474
     - path: src/qwen3vl_demo/prompts.py
       hash: md5
-      md5: f0b33ed3e9d51c61c1c20ccd90e70bfa
-      size: 7686
+      md5: b026cdd7ce088d945332b4c76a76cedb
+      size: 10602
     - path: src/qwen3vl_demo/tracking.py
       hash: md5
       md5: 1ffded381d8a1a20452d026fcbaab42d
@@ -754,13 +759,13 @@ stages:
     outs:
     - path: data/eval
       hash: md5
-      md5: d4b638c828875c12e8204052192c9c71.dir
-      size: 77150095
+      md5: f1b6642ee13c27ed6e16f3e6103fdd69.dir
+      size: 75789543
       nfiles: 3
     - path: data/train
       hash: md5
-      md5: 3ebca352324c80e63f887f1519ff625b.dir
-      size: 186991687
+      md5: e38721318a7df4f54b7b90d1dd154179.dir
+      size: 187717135
       nfiles: 3
   eval_base:
     cmd: "uv run python -m qwen3vl_demo.evaluate --profile default --seed 42 --data-dir
@@ -769,8 +774,8 @@ stages:
     deps:
     - path: data/eval
       hash: md5
-      md5: d4b638c828875c12e8204052192c9c71.dir
-      size: 77150095
+      md5: f1b6642ee13c27ed6e16f3e6103fdd69.dir
+      size: 75789543
       nfiles: 3
     - path: src/qwen3vl_demo/evaluate.py
       hash: md5
@@ -787,8 +792,8 @@ stages:
     outs:
     - path: outputs/metrics_base.json
       hash: md5
-      md5: 3a9c3004a9732c6f8b68104773595ad3
-      size: 881
+      md5: 4330d7e78cbfc644a3abad643d80767d
+      size: 940
   train:
     cmd: "uv run python -m qwen3vl_demo.train --profile default --seed 42 --device
       cuda --dtype bfloat16 --data-dir data --output-dir outputs --model-dir outputs/model
@@ -799,13 +804,13 @@ stages:
     deps:
     - path: data/eval
       hash: md5
-      md5: d4b638c828875c12e8204052192c9c71.dir
-      size: 77150095
+      md5: f1b6642ee13c27ed6e16f3e6103fdd69.dir
+      size: 75789543
       nfiles: 3
     - path: data/train
       hash: md5
-      md5: 3ebca352324c80e63f887f1519ff625b.dir
-      size: 186991687
+      md5: e38721318a7df4f54b7b90d1dd154179.dir
+      size: 187717135
       nfiles: 3
     - path: src/qwen3vl_demo/evaluate.py
       hash: md5
@@ -822,8 +827,8 @@ stages:
     outs:
     - path: outputs/model
       hash: md5
-      md5: c1931ce3b5e8b8bff426030d259187cd.dir
-      size: 4266717639
+      md5: bdd4b3f62e2e71c05638557eee373c8b.dir
+      size: 4266679480
       nfiles: 14
   eval:
     cmd: "uv run python -m qwen3vl_demo.evaluate --profile default --seed 42 --data-dir
@@ -833,13 +838,13 @@ stages:
     deps:
     - path: data/eval
       hash: md5
-      md5: d4b638c828875c12e8204052192c9c71.dir
-      size: 77150095
+      md5: f1b6642ee13c27ed6e16f3e6103fdd69.dir
+      size: 75789543
       nfiles: 3
     - path: outputs/model
       hash: md5
-      md5: c1931ce3b5e8b8bff426030d259187cd.dir
-      size: 4266717639
+      md5: bdd4b3f62e2e71c05638557eee373c8b.dir
+      size: 4266679480
       nfiles: 14
     - path: src/qwen3vl_demo/evaluate.py
       hash: md5
@@ -856,8 +861,8 @@ stages:
     outs:
     - path: outputs/metrics_finetuned.json
       hash: md5
-      md5: 18b3d9dc4c89a8cd52309c39604cbd97
-      size: 854
+      md5: 6228612659f97ffe978b5d9eb7c00981
+      size: 902
   rerank:
     cmd: "uv run python -m qwen3vl_demo.rerank --profile default --seed 42 --device
       cuda --data-dir data --output-dir outputs --model-dir outputs/model --embedding-model
@@ -868,18 +873,18 @@ stages:
     deps:
     - path: data/eval
       hash: md5
-      md5: d4b638c828875c12e8204052192c9c71.dir
-      size: 77150095
+      md5: f1b6642ee13c27ed6e16f3e6103fdd69.dir
+      size: 75789543
       nfiles: 3
     - path: outputs/model
       hash: md5
-      md5: c1931ce3b5e8b8bff426030d259187cd.dir
-      size: 4266717639
+      md5: bdd4b3f62e2e71c05638557eee373c8b.dir
+      size: 4266679480
       nfiles: 14
     - path: outputs/reranker
       hash: md5
-      md5: e30fb1416e9c53628875af21849cf56d.dir
-      size: 4266835163
+      md5: dbac2428a2eb0a2544a1364eb5aae763.dir
+      size: 4266677373
       nfiles: 18
     - path: src/qwen3vl_demo/models.py
       hash: md5
@@ -896,9 +901,9 @@ stages:
     outs:
     - path: outputs/rerank_examples.json
       hash: md5
-      md5: 1b7de7c62afd103d8d7a998778786c3c
-      size: 1741
+      md5: 97e47e761375f06c2d31f29a8b983ed7
+      size: 1729
     - path: outputs/rerank_metrics.json
       hash: md5
-      md5: 2739cbbb9c415cc62919627108ac6b34
-      size: 1481
+      md5: c7053e11fe4e16ab77ed5343fb8f7833
+      size: 1556
