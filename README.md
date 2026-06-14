@@ -51,10 +51,10 @@ green border = a correct match. Fine-tuning pulls the right images up:
 
 ![Retrieval before vs after fine-tuning](docs/images/retrieval_before_after.png)
 
-**Gradio viewer** — browse the dataset and compare metrics interactively:
+**Gradio viewer** — browse the dataset and compare two-stage (embedding × reranker) metrics interactively:
 
 ![Gradio dataset tab](docs/images/gradio_dataset.png)
-![Gradio metrics tab](docs/images/gradio_metrics.png)
+![Gradio two-stage (embedding × reranker) tab](docs/images/gradio_metrics.png)
 
 ---
 
