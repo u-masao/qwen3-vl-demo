@@ -5,10 +5,11 @@
 既に生成済みの ``data*/`` と ``outputs*/`` を読んで可視化するだけの読み取り専用ツール。
 
 タブ構成:
-  1. メトリクス比較     – 埋め込みのベース vs FT 後の棒グラフ＋数値表
-  2. データセット閲覧    – 生成したキャプション付き画像を 1 枚ずつブラウズ
-  3. Reranking デモ     – rerank_examples.json からリランク前後の順位変化を表示
-  4. 2 段階検索 6 パターン – rerank_metrics.json（埋め込み{base,ft}×リランカー{base,ft,none}）を比較
+  1. メトリクス比較        – 埋め込みのベース vs FT 後の棒グラフ＋数値表
+  2. データセット閲覧       – 生成したキャプション付き画像を 1 枚ずつブラウズ
+  3. ペルソナ閲覧          – ペルソナ名→嗜好埋め込み→嗜好テキスト→生成プロンプト→生成画像の対応を可視化
+  4. Reranking デモ        – rerank_examples.json からリランク前後の順位変化を表示
+  5. 2 段階検索 6 パターン  – rerank_metrics.json（埋め込み{base,ft}×リランカー{base,ft,none}）を比較
 
 起動: ``uv run python app.py`` → http://localhost:7860
 """
@@ -214,7 +215,184 @@ def dataset_nav(data_dir_label: str, split: str, idx: int, direction: str):
 
 
 # ---------------------------------------------------------------------------
-# タブ 3（Reranking デモ）用のヘルパ
+# タブ 3（ペルソナ閲覧）用のヘルパ
+# ---------------------------------------------------------------------------
+
+_PREF_MODEL_CACHE: dict[str, dict] = {}
+
+
+def load_pref_model(data_dir_label: str) -> dict | None:
+    """preference_model.json を読む。なければ data/ の共通ファイルへフォールバック。"""
+    if data_dir_label in _PREF_MODEL_CACHE:
+        return _PREF_MODEL_CACHE[data_dir_label]
+    path = DATA_DIRS[data_dir_label] / "preference_model.json"
+    if not path.exists():
+        path = ROOT / "data" / "preference_model.json"
+    if not path.exists():
+        return None
+    model = json.loads(path.read_text())
+    _PREF_MODEL_CACHE[data_dir_label] = model
+    return model
+
+
+def get_persona_names(data_dir_label: str) -> list[str]:
+    """選択済みデータディレクトリで利用可能なペルソナ名のリストを返す。"""
+    model = load_pref_model(data_dir_label)
+    if model:
+        return list(model["persona_pref"].keys())
+    for split in ("eval", "train"):
+        ds = load_dataset_split(data_dir_label, split)
+        if ds is not None:
+            return sorted(set(ds["persona"]))
+    return []
+
+
+def make_persona_embedding_figure(data_dir_label: str, persona: str):
+    """ペルソナの嗜好埋め込みを7軸の横棒グラフで描く。"""
+    model = load_pref_model(data_dir_label)
+    if model is None or persona not in model.get("persona_pref", {}):
+        fig, ax = plt.subplots()
+        ax.text(0.5, 0.5, "preference_model.json が見つかりません", ha="center", va="center")
+        return fig
+
+    axes_labels = model["axes"]
+    vec = model["persona_pref"][persona]
+    colors = ["#DD8452" if v > 0 else "#4C72B0" if v < 0 else "#aaaaaa" for v in vec]
+
+    fig, ax = plt.subplots(figsize=(7, 3))
+    ax.barh(axes_labels, vec, color=colors, alpha=0.85)
+    ax.axvline(0, color="black", linewidth=0.8)
+    ax.set_xlim(-1.3, 1.3)
+    ax.set_xlabel("嗜好強度（+ 好む / − 嫌う）", fontsize=9)
+    ax.set_title(f"{persona} の嗜好埋め込み", fontsize=10, fontweight="bold")
+    ax.grid(axis="x", linestyle="--", alpha=0.4)
+    fig.tight_layout()
+    return fig
+
+
+def get_persona_pref_text(data_dir_label: str, persona: str) -> str:
+    """嗜好埋め込みをこだわりの強い軸順にテキストで返す。"""
+    model = load_pref_model(data_dir_label)
+    if model is None or persona not in model.get("persona_pref", {}):
+        return "データなし"
+    axes_labels = model["axes"]
+    vec = model["persona_pref"][persona]
+    fragments = model["fragments"]
+    ranked = sorted(range(len(vec)), key=lambda i: abs(vec[i]), reverse=True)
+    lines = []
+    for i in ranked:
+        v = vec[i]
+        if abs(v) < 1e-9:
+            continue
+        frag = fragments[axes_labels[i]][1 if v > 0 else 0]
+        lines.append(f"{axes_labels[i]:12s}  {v:+.2f}  →  {frag}")
+    return "\n".join(lines) if lines else "嗜好ベクトルがゼロです"
+
+
+def get_persona_archetype_text(data_dir_label: str, persona: str) -> str:
+    """アーキタイプ混合比を文字列で返す。"""
+    model = load_pref_model(data_dir_label)
+    if model is None or persona not in model.get("persona_mix", {}):
+        return "データなし"
+    mix = model["persona_mix"][persona]
+    return "  +  ".join(f"{arch} × {w:.1f}" for arch, w in mix.items())
+
+
+def make_archetype_table(data_dir_label: str) -> tuple[list[str], list[list]]:
+    """全アーキタイプ × 7 軸の定義テーブル（ヘッダ, 行）を返す。ペルソナ非依存。"""
+    model = load_pref_model(data_dir_label)
+    if model is None:
+        return ["アーキタイプ"], []
+    axes = model["axes"]
+    headers = ["アーキタイプ"] + axes
+    rows = [
+        [arch] + [f"{v:+.1f}" for v in vec]
+        for arch, vec in model["archetypes"].items()
+    ]
+    return headers, rows
+
+
+def get_persona_calc_text(data_dir_label: str, persona: str) -> str:
+    """嗜好埋め込みの計算式（アーキタイプ加重和）を展開したテキストを返す。"""
+    model = load_pref_model(data_dir_label)
+    if model is None or persona not in model.get("persona_pref", {}):
+        return "データなし"
+    axes = model["axes"]
+    mix = model["persona_mix"].get(persona, {})
+    archetypes = model["archetypes"]
+    vec = model["persona_pref"][persona]
+
+    mix_str = "  +  ".join(f"{w:.1f}×{arch}" for arch, w in mix.items())
+    lines = [f"[計算式]  persona_pref = {mix_str}", ""]
+    for arch, w in mix.items():
+        av = archetypes.get(arch, [0.0] * len(axes))
+        av_str = "[" + ", ".join(f"{v:+.1f}" for v in av) + "]"
+        lines.append(f"  {arch:16s} = {av_str}  ×{w:.1f}")
+    lines.append("  " + "─" * 58)
+    result_str = "[" + ", ".join(f"{v:+.2f}" for v in vec) + "]"
+    lines.append(f"  {'persona_pref':16s} = {result_str}")
+    lines.append("")
+    lines.append("  軸順序: " + ", ".join(axes))
+    return "\n".join(lines)
+
+
+def get_persona_interaction_text(data_dir_label: str, persona: str) -> str:
+    """このペルソナの非加法的交互作用（INTERACTIONS）を人間可読テキストで返す。"""
+    model = load_pref_model(data_dir_label)
+    if model is None:
+        return "データなし"
+    interactions = model.get("interactions", {}).get(persona, [])
+    if not interactions:
+        return "（交互作用なし）"
+    axes = model["axes"]
+    gamma = model.get("gamma", 2.0)
+    lines = [f"[非加法的交互作用]  appeal への加算項: γ={gamma:.1f} × coef × (a_i AND a_j)", ""]
+    for tri in interactions:
+        i, j, coef = int(tri[0]), int(tri[1]), tri[2]
+        sign = "+" if coef >= 0 else ""
+        note = "加点（両方1のとき好む）" if coef > 0 else "減点（両方1のとき嫌う）"
+        lines.append(f"  {axes[i]:12s} ∧ {axes[j]:12s}  →  {sign}{coef:.1f}   {note}")
+    return "\n".join(lines)
+
+
+def _persona_rows(data_dir_label: str, persona: str) -> list[dict]:
+    """eval → train の順で探し、ペルソナ一致の行リストを返す。"""
+    for split in ("eval", "train"):
+        ds = load_dataset_split(data_dir_label, split)
+        if ds is None:
+            continue
+        rows = [ds[i] for i in range(len(ds)) if ds[i]["persona"] == persona]
+        if rows:
+            return rows
+    return []
+
+
+def get_persona_image(data_dir_label: str, persona: str, idx: int):
+    """ペルソナの idx 番目サンプルを返す。"""
+    rows = _persona_rows(data_dir_label, persona)
+    if not rows:
+        return None, "（このペルソナのデータなし）", "", "", 0, 0
+    idx = max(0, min(idx, len(rows) - 1))
+    row = rows[idx]
+    return row["positive"], row["anchor"], row["subject"], row["category"], idx, len(rows)
+
+
+def persona_image_nav(data_dir_label: str, persona: str, idx: int, direction: str):
+    """前へ／次へ遷移。端でラップアラウンド。"""
+    rows = _persona_rows(data_dir_label, persona)
+    total = len(rows)
+    if total == 0:
+        return None, "（このペルソナのデータなし）", "", "", 0, "0 / 0"
+    if direction == "next":
+        idx = (idx + 1) % total
+    elif direction == "prev":
+        idx = (idx - 1) % total
+    img, anchor, subject, category, idx, total = get_persona_image(data_dir_label, persona, idx)
+    return img, anchor, subject, category, idx, f"{idx + 1} / {total}"
+
+
+# ---------------------------------------------------------------------------
+# タブ 4（Reranking デモ）用のヘルパ
 # ---------------------------------------------------------------------------
 
 
@@ -229,8 +407,8 @@ def load_rerank_examples(output_dir_label: str) -> list[list]:
     examples = json.loads(path.read_text())
     rows = []
     for ex in examples:
-        rb = ex.get("rank_before_rerank")  # リランク前の正解順位
-        ra = ex.get("rank_after_rerank")  # リランク後の正解順位
+        rb = ex.get("best_rank_before_rerank")  # リランク前の最良正解順位
+        ra = ex.get("best_rank_after_rerank")  # リランク後の最良正解順位
         improved = ""
         if rb is not None and ra is not None:
             # 順位は小さいほど上位。ra < rb なら順位が上がった＝改善。
@@ -243,7 +421,7 @@ def load_rerank_examples(output_dir_label: str) -> list[list]:
         rows.append(
             [
                 ex.get("query", ""),
-                ex.get("target", ""),
+                ex.get("num_relevant", ""),
                 rb if rb is not None else "—",
                 ra if ra is not None else "—",
                 ex.get("top_k", ""),
@@ -469,7 +647,158 @@ def build_app() -> gr.Blocks:
                 demo.load(_load, inputs=[data_dir_dd, split_dd], outputs=_ds_outputs)
 
             # ----------------------------------------------------------------
-            # タブ 3: Reranking デモ
+            # タブ 3: ペルソナ閲覧
+            # ----------------------------------------------------------------
+            with gr.Tab("🧑 ペルソナ閲覧"):
+                gr.Markdown(
+                    "**所与 → 計算 → 変換** の流れでペルソナの嗜好構造を確認します。  \n"
+                    "左列: アーキタイプ混合（所与）→ 加重和（計算）→ 嗜好埋め込み（結果）"
+                    "→ 嗜好テキスト（FRAGMENTS 変換）→ 交互作用（非線形補正）  \n"
+                    "右列: そのペルソナの生成画像と生成用プロンプトをブラウズ"
+                )
+                with gr.Row():
+                    p_data_dir_dd = gr.Dropdown(
+                        choices=data_dir_choices,
+                        value=data_dir_choices[0],
+                        label="データディレクトリ",
+                        interactive=True,
+                    )
+                    p_persona_dd = gr.Dropdown(
+                        choices=get_persona_names(data_dir_choices[0]),
+                        value=(get_persona_names(data_dir_choices[0]) or [""])[0],
+                        label="ペルソナ",
+                        interactive=True,
+                    )
+
+                # アーキタイプ定義テーブル（ペルソナ非依存・折りたたみ）
+                with gr.Accordion("📐 所与: アーキタイプ定義（嗜好空間の基底ベクトル）", open=False):
+                    gr.Markdown(
+                        "6 種類のアーキタイプが嗜好空間の「型」を定義します。"
+                        "各値は **+1**（好む）/ **−1**（嫌う）/ **0**（無関心）。"
+                        "軸順序: warmth / era / ornament / mood / saturation / material / setting"
+                    )
+                    _init_arch_headers, _init_arch_rows = make_archetype_table(data_dir_choices[0])
+                    p_arch_table = gr.Dataframe(
+                        value=_init_arch_rows,
+                        headers=_init_arch_headers,
+                        label="アーキタイプ × 軸",
+                        interactive=False,
+                    )
+
+                with gr.Row():
+                    # 左: 計算過程
+                    with gr.Column(scale=1):
+                        p_archetype_txt = gr.Textbox(
+                            label="所与: アーキタイプ混合（凸結合の重み）",
+                            interactive=False, lines=2,
+                        )
+                        p_calc_txt = gr.Textbox(
+                            label="計算: 加重和の展開式  →  persona_pref",
+                            interactive=False, lines=7,
+                        )
+                        p_embed_plot = gr.Plot(label="結果: 嗜好埋め込み（7軸）")
+                        p_pref_txt = gr.Textbox(
+                            label="変換: 嗜好テキスト（FRAGMENTS 経由、こだわり強度順）",
+                            interactive=False, lines=8,
+                        )
+                        p_interaction_txt = gr.Textbox(
+                            label="補正: 非加法的交互作用（INTERACTIONS）",
+                            interactive=False, lines=5,
+                        )
+
+                    # 右: 画像ブラウザ
+                    with gr.Column(scale=1):
+                        with gr.Row():
+                            p_prev_btn = gr.Button("← 前へ", size="sm")
+                            p_idx_state = gr.State(value=0)
+                            p_counter_lbl = gr.Label(label="サンプル番号", value="— / —")
+                            p_next_btn = gr.Button("次へ →", size="sm")
+                        p_img = gr.Image(label="生成画像", type="pil", height=380)
+                        p_anchor_txt = gr.Textbox(
+                            label="生成用プロンプト（anchor）", interactive=False, lines=4
+                        )
+                        with gr.Row():
+                            p_subject_txt = gr.Textbox(label="被写体", interactive=False)
+                            p_category_txt = gr.Textbox(label="カテゴリ", interactive=False)
+
+                # 左ペインの出力リスト（アーキタイプテーブルはペルソナ非依存なので別管理）
+                _p_left = [p_archetype_txt, p_calc_txt, p_embed_plot,
+                           p_pref_txt, p_interaction_txt]
+                # 右ペインの出力リスト
+                _p_right = [p_img, p_anchor_txt, p_subject_txt, p_category_txt,
+                            p_idx_state, p_counter_lbl]
+
+                def _p_on_data_dir(data_dir_label):
+                    """データディレクトリ変更時: ペルソナ選択肢・アーキタイプテーブル・全パネルを更新。"""
+                    names = get_persona_names(data_dir_label)
+                    persona = names[0] if names else ""
+                    headers, rows = make_archetype_table(data_dir_label)
+                    arch = get_persona_archetype_text(data_dir_label, persona)
+                    calc = get_persona_calc_text(data_dir_label, persona)
+                    fig = make_persona_embedding_figure(data_dir_label, persona)
+                    pref = get_persona_pref_text(data_dir_label, persona)
+                    inter = get_persona_interaction_text(data_dir_label, persona)
+                    img, anchor, subject, cat, idx, total = get_persona_image(
+                        data_dir_label, persona, 0
+                    )
+                    counter = f"1 / {total}" if total > 0 else "0 / 0"
+                    return (
+                        gr.update(choices=names, value=persona),
+                        gr.Dataframe(value=rows, headers=headers),
+                        arch, calc, fig, pref, inter,
+                        img, anchor, subject, cat, 0, counter,
+                    )
+
+                def _p_on_persona(data_dir_label, persona):
+                    arch = get_persona_archetype_text(data_dir_label, persona)
+                    calc = get_persona_calc_text(data_dir_label, persona)
+                    fig = make_persona_embedding_figure(data_dir_label, persona)
+                    pref = get_persona_pref_text(data_dir_label, persona)
+                    inter = get_persona_interaction_text(data_dir_label, persona)
+                    img, anchor, subject, cat, idx, total = get_persona_image(
+                        data_dir_label, persona, 0
+                    )
+                    counter = f"1 / {total}" if total > 0 else "0 / 0"
+                    return arch, calc, fig, pref, inter, img, anchor, subject, cat, 0, counter
+
+                def _p_prev(data_dir_label, persona, idx):
+                    img, anchor, subject, cat, new_idx, counter = persona_image_nav(
+                        data_dir_label, persona, idx, "prev"
+                    )
+                    return img, anchor, subject, cat, new_idx, counter
+
+                def _p_next(data_dir_label, persona, idx):
+                    img, anchor, subject, cat, new_idx, counter = persona_image_nav(
+                        data_dir_label, persona, idx, "next"
+                    )
+                    return img, anchor, subject, cat, new_idx, counter
+
+                _p_all_outputs = [p_persona_dd, p_arch_table] + _p_left + _p_right
+                _p_persona_outputs = _p_left + _p_right
+
+                p_data_dir_dd.change(
+                    _p_on_data_dir, inputs=p_data_dir_dd, outputs=_p_all_outputs
+                )
+                p_persona_dd.change(
+                    _p_on_persona, inputs=[p_data_dir_dd, p_persona_dd],
+                    outputs=_p_persona_outputs,
+                )
+                p_prev_btn.click(
+                    _p_prev, inputs=[p_data_dir_dd, p_persona_dd, p_idx_state],
+                    outputs=_p_right,
+                )
+                p_next_btn.click(
+                    _p_next, inputs=[p_data_dir_dd, p_persona_dd, p_idx_state],
+                    outputs=_p_right,
+                )
+                demo.load(
+                    _p_on_persona,
+                    inputs=[p_data_dir_dd, p_persona_dd],
+                    outputs=_p_persona_outputs,
+                )
+
+            # ----------------------------------------------------------------
+            # タブ 4: Reranking デモ
             # ----------------------------------------------------------------
             with gr.Tab("🔄 Rerankingデモ"):
                 rerank_dir_dd = gr.Dropdown(
@@ -481,13 +810,13 @@ def build_app() -> gr.Blocks:
                 rerank_table = gr.Dataframe(
                     headers=[
                         "クエリ",
-                        "正解画像ID",
+                        "関連画像数",
                         "Rerank前ランク",
                         "Rerank後ランク",
                         "Top-K",
                         "結果",
                     ],
-                    datatype=["str", "str", "number", "number", "number", "str"],
+                    datatype=["str", "number", "number", "number", "number", "str"],
                     label="Rerank前後のランク比較",
                     interactive=False,
                     wrap=True,
@@ -501,7 +830,7 @@ def build_app() -> gr.Blocks:
                             value=[],
                             headers=[
                                 "クエリ",
-                                "正解画像ID",
+                                "関連画像数",
                                 "Rerank前ランク",
                                 "Rerank後ランク",
                                 "Top-K",
@@ -514,7 +843,7 @@ def build_app() -> gr.Blocks:
                 demo.load(_load_rerank, inputs=rerank_dir_dd, outputs=rerank_table)
 
             # ----------------------------------------------------------------
-            # タブ 4: 2 段階検索 6 パターン評価
+            # タブ 5: 2 段階検索 6 パターン評価
             # ----------------------------------------------------------------
             with gr.Tab("🔀 2段階検索 (6パターン)"):
                 gr.Markdown(
