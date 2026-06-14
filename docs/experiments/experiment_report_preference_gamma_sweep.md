@@ -8,10 +8,10 @@
 
 ## 1. 背景
 
-前々回（`docs/experiment_report_subject_query.md`）・前回（`docs/experiment_report_persona_query.md`）の
+前々回（`docs/experiments/experiment_report_subject_query.md`）・前回（`docs/experiments/experiment_report_persona_query.md`）の
 ペルソナ検索タスクは、「視覚的に無関係な subject をペルソナへ恣意的に割り当てる」設計だった。
 これによりベースモデルの精度はランダム近くまで落とせたが、**リランカーの伸びしろが消える**という
-別の問題が残った（`docs/reranker_ft_underperformance.md`）。
+別の問題が残った（`docs/experiments/reranker_ft_underperformance.md`）。
 
 原因は relevance の構造にある。subject タスクの relevance は「persona⇔subject の二値マップ」で、
 ある画像が persona に属するかどうかは**加法的（属性ごとに独立）に決まる**。内積で候補をスコアする

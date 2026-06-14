@@ -7,7 +7,7 @@
 
 ## 1. 背景
 
-前回実験（`docs/experiment_report.md`）では、クエリをキャプション全文（`"a fluffy cat on a wooden table"`）として合成データで埋め込みモデルをFTしたところ、Accuracy@1 が 86% → 92% に改善した。しかしリランカーFTはベースより -0.0074 低い結果となった。
+前回実験（`docs/experiments/experiment_report.md`）では、クエリをキャプション全文（`"a fluffy cat on a wooden table"`）として合成データで埋め込みモデルをFTしたところ、Accuracy@1 が 86% → 92% に改善した。しかしリランカーFTはベースより -0.0074 低い結果となった。
 
 この問題を分析した結果、**根本的なタスク設計の問題**が疑われた:
 

@@ -2,7 +2,7 @@
 
 # Qwen3-VL Multimodal Embedding Fine-tuning Demo
 
-A minimal, end-to-end demo that shows how **synthetic data alone can improve image retrieval**.
+A minimal end-to-end demo that builds **personalized image retrieval** from synthetic data alone — no human annotation needed.
 
 1. 🎨 **Generate data** — use the text-to-image model [FLUX.2-klein-4B](https://huggingface.co/black-forest-labs/FLUX.2-klein-4B) to synthesize a captioned image dataset whose visual attributes are drawn from a **human-like latent preference model**, then auto-label each image with the persona that most prefers it (**argmax appeal**). Each persona name is the retrieval query; its images are the targets.
 2. 📐 **Baseline eval** — measure text→image retrieval quality (NDCG / Recall@k) of [Qwen3-VL-Embedding-2B](https://huggingface.co/Qwen/Qwen3-VL-Embedding-2B)
@@ -22,17 +22,17 @@ flowchart LR
     R -->|rerank top-k| RR["Qwen3-VL-<br/>Reranker-2B (fine-tuned)"]
 ```
 
-> **Why it's neat:** **no human annotation needed.** Each image's visual attributes
-> are sampled from a small **latent preference model** (taste axes like warm / vintage /
-> ornate, mixed per persona), and its label is whichever persona's taste it best
-> matches — so training data is essentially free. Crucially the preference is
-> **non-additive** (e.g. *warm* and *ornate* are each liked, but *warm ∧ ornate*
-> together is disliked): a bi-encoder's dot product can't express that, but a
-> cross-encoder **reranker can** — so the two-stage pipeline has real headroom
-> (see [Results](#results)). The query stays an opaque token (`user_alpha`), so a
-> pretrained model can't solve it — fine-tuning has to teach it. (A simpler legacy
-> `subject` task — `user_alpha` likes cats, pizza, motorcycles… — is still available
-> via `--task subject`.)
+> **Why it's neat:** The system learns to retrieve images that match a *specific user's taste*,
+> not just a generic caption. Each persona has a **latent preference model** (7 taste axes
+> — warmth, era, ornament, mood, saturation, material, setting — blended per user), and
+> each synthetic image is automatically labelled with whichever persona's taste it best
+> matches (**argmax appeal**) — so training data is essentially free, **no human annotation needed**.
+> The preference is deliberately **non-additive** (e.g. *warm* and *ornate* are each liked,
+> but *warm ∧ ornate* together is disliked): a bi-encoder's dot product can't express that,
+> but a cross-encoder **reranker can** — so the two-stage pipeline has real headroom
+> (see [Results](#results)). Queries are opaque tokens (`user_alpha`), so a pretrained model
+> can't solve the task — fine-tuning has to teach the persona↔taste mapping. (The legacy
+> `subject` task is still available via `--task subject`.)
 
 > 📖 The detailed design docs under [`docs/`](docs/) are written in Japanese.
 > A Japanese version of this README is available at [README.ja.md](README.ja.md).
@@ -46,8 +46,8 @@ generation prompt for its image):
 
 ![Synthetic dataset samples](docs/images/sample_grid.png)
 
-**Text→image retrieval, before vs after fine-tuning** — top results for the same query;
-green border = a correct match. Fine-tuning pulls the right images up:
+**Personalized image retrieval, before vs after fine-tuning** — top results for a persona query;
+green border = an image whose argmax-appeal persona matches the query. Fine-tuning pulls the right images up:
 
 ![Retrieval before vs after fine-tuning](docs/images/retrieval_before_after.png)
 
@@ -325,7 +325,7 @@ is why absolute Recall@1 stays low even at perfect ranking. Measured on the defa
 **NVIDIA RTX 4060 Ti 16GB**, one epoch of training each. Reproduce with `make all`
 and read `outputs/metrics_*.json` / `outputs/rerank_metrics.json`. Full analysis
 incl. the `gamma=0` (additive) ablation:
-[docs/experiment_report_preference_gamma_sweep.md](docs/experiment_report_preference_gamma_sweep.md).
+[docs/experiments/experiment_report_preference_gamma_sweep.md](docs/experiments/experiment_report_preference_gamma_sweep.md).
 
 ### Embedding retrieval — Base vs Fine-tuned
 

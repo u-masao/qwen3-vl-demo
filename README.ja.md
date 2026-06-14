@@ -2,7 +2,7 @@
 
 # Qwen3-VL マルチモーダル埋め込み ファインチューニング・デモ
 
-**合成データだけで「画像検索の精度が上がる」体験**を、最小構成で一気通貫に再現するデモです。
+**合成データだけで** パーソナライズ画像検索を学習させる、最小構成の一気通貫デモ — 人手アノテーション不要。
 
 1. 🎨 **データ生成** — 画像生成モデル [FLUX.2-klein-4B](https://huggingface.co/black-forest-labs/FLUX.2-klein-4B) で、**人間を模した潜在嗜好モデル**から見た目の属性をサンプルしてキャプション付き画像を生成し、各画像を**最も好むペルソナ（argmax appeal）**で自動ラベリング（ペルソナ名＝検索クエリ、その画像群＝正解）
 2. 📐 **ベース評価** — [Qwen3-VL-Embedding-2B](https://huggingface.co/Qwen/Qwen3-VL-Embedding-2B) のテキスト→画像検索精度（NDCG / Recall@k）を測定
@@ -22,15 +22,16 @@ flowchart LR
     R -->|上位を再ランク| RR["Qwen3-VL-<br/>Reranker-2B（FT）"]
 ```
 
-> なぜ面白いか: **人手アノテーション不要**。各画像の見た目の属性を小さな**潜在嗜好モデル**
-> （warm / vintage / ornate などの嗜好軸をペルソナごとに混合）からサンプルし、ラベルは
-> その属性を最も好むペルソナにするので、学習データがタダで無限に作れます。さらにこの嗜好は
-> **非加法的**（例: *warm* も *ornate* も単体では好きだが、*warm かつ ornate* は嫌い）で、
-> 内積で測る bi-encoder には表現しづらく、**cross-encoder のリランカーが効く** ＝ 2 段階検索に
-> 本物の伸びしろが生まれます（[結果](#結果)を参照）。クエリは opaque トークン（`user_alpha`）の
-> ままなので事前学習済みモデルには解けず、ファインチューニングして初めて学習できます。
-> （単純な legacy の `subject` タスク — `user_alpha` は猫・ピザ・バイクを好む — も
-> `--task subject` で使えます。）
+> なぜ面白いか: このシステムは汎用的なキャプションマッチングではなく、**特定ユーザーの嗜好に合った画像**を返すことを学習します。
+> 各ペルソナは**潜在嗜好モデル**（warmth / era / ornament / mood / saturation / material /
+> setting の 7 嗜好軸をユーザーごとに混合）を持ち、合成した各画像には「最もその属性を好む
+> ペルソナ（argmax appeal）」が自動ラベリングされます — 学習データが本質的にタダで、**人手アノテーション不要**。
+> さらにこの嗜好は意図的に**非加法的**（例: *warm* も *ornate* も単体では好きだが、
+> *warm かつ ornate* は嫌い）で、内積で測る bi-encoder には表現しづらく、
+> **cross-encoder のリランカーが効く** = 2 段階検索に本物の伸びしろが生まれます
+> （[結果](#結果)を参照）。クエリは opaque トークン（`user_alpha`）のままなので事前学習済み
+> モデルには解けず、FT して初めてペルソナ↔嗜好の対応を学習できます。
+> （シンプルな legacy の `subject` タスクも `--task subject` で使えます。）
 
 ---
 
@@ -40,8 +41,8 @@ flowchart LR
 
 ![合成データセットのサンプル](docs/images/sample_grid.png)
 
-**テキスト→画像検索、ファインチューニング前後の比較** — 同じクエリの上位結果。緑枠が正解。
-FT によって正解画像が上位に上がる様子が分かります:
+**パーソナライズ画像検索、ファインチューニング前後の比較** — 同じペルソナクエリの上位結果。
+緑枠 = argmax-appeal ペルソナがクエリと一致する画像。FT によって正解画像が上位に上がります:
 
 ![ファインチューニング前後の検索比較](docs/images/retrieval_before_after.png)
 
@@ -307,7 +308,7 @@ qwen3-vl-demo/
 **NVIDIA RTX 4060 Ti 16GB** で各 1 エポック学習して計測。`make all` で再現でき、
 `outputs/metrics_*.json` / `outputs/rerank_metrics.json` で確認できます。`gamma=0`（加法的）
 との比較を含む詳細は
-[docs/experiment_report_preference_gamma_sweep.md](docs/experiment_report_preference_gamma_sweep.md)。
+[docs/experiments/experiment_report_preference_gamma_sweep.md](docs/experiments/experiment_report_preference_gamma_sweep.md)。
 
 ### 埋め込み検索 — ベース vs ファインチューニング後
 

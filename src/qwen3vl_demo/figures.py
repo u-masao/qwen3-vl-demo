@@ -295,8 +295,8 @@ def build_retrieval_before_after(
         block_geom.append({"text": ax_text, "rows": row_axes})
 
     fig.suptitle(
-        "Text→image retrieval: Base vs Fine-Tuned (green = correct persona)",
-        fontsize=14,
+        "Personalized image retrieval — Base vs Fine-Tuned  (green = same persona as query)",
+        fontsize=13,
     )
     # 枠線とラベルを描く前に余白を確定させる。左はラベル帯、右は枠線ぶんを空ける。
     fig.subplots_adjust(left=0.12, right=0.95, top=0.95, bottom=0.02)

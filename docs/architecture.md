@@ -8,33 +8,37 @@
 
 ## 1. 全体像
 
-「合成データだけで画像検索の精度を上げる」一連の流れを 5 ステージに分割しています。
+パーソナライズ画像検索を合成データだけで学習させる一連の流れを 6 ステージに分割しています。
 各ステージは独立した Python モジュールで、CLI（`python -m qwen3vl_demo.<module>`）として
 単体実行できます。これらを **Makefile**（手軽に実行）または **DVC**（依存追跡つき再現実行）で束ねます。
 
-```
-┌─────────────┐   captions    ┌──────────────┐   (text, image)   ┌──────────────┐
-│  prompts.py │ ────────────▶ │ generate_data │ ────────────────▶ │   datasets   │
-│ (キャプション)│ + FLUX.2-klein│   .py         │   train / eval    │  (ディスク)   │
-└─────────────┘               └──────────────┘                   └──────┬───────┘
-                                                                         │
-                          ┌──────────────────────────────────────────────┤
-                          ▼                                              ▼
-                  ┌──────────────┐  metrics_base.json        ┌──────────────┐
-                  │  evaluate.py │ ◀── ベース評価             │   train.py   │
-                  │ (IR 評価器)   │                            │  (MNRL でFT)  │
-                  └──────┬───────┘                            └──────┬───────┘
-                         │ metrics_finetuned.json (FT 後評価)        │ outputs/model
-                         ▼                                          ▼
-                  ┌────────────────────────────────────────────────────────┐
-                  │                       rerank.py                         │
-                  │  FT 済み埋め込みで top-k 検索 → Reranker-2B で並べ替え      │
-                  └────────────────────────────────────────────────────────┘
-                                          │ rerank_metrics.json / rerank_examples.json
-                                          ▼
-                                  ┌──────────────┐
-                                  │    app.py    │  Gradio で結果を可視化
-                                  └──────────────┘
+```mermaid
+flowchart TD
+    subgraph gen_stage["① generate_data"]
+        pref["preference.py\n(潜在嗜好モデル)"]
+        prompt["prompts.py\n(キャプション生成)"]
+        cache["image_cache.py\n(生成キャッシュ)"]
+        gendata["generate_data.py\n+ FLUX.2-klein"]
+        pref --> gendata
+        prompt --> gendata
+        cache --> gendata
+    end
+
+    gendata -->|"data/train\ndata/eval"| ds[("datasets\n(ディスク)")]
+
+    ds --> eval_base["② evaluate.py\nベース評価"]
+    ds --> train_emb["③ train.py\n埋め込み FT (MNRL)"]
+
+    eval_base -->|"metrics_base.json"| app
+
+    train_emb -->|"outputs/model"| eval_ft["④ evaluate.py\nFT 後評価"]
+    eval_ft -->|"metrics_finetuned.json"| app
+
+    train_emb -->|"outputs/model"| train_rr["⑤ train_reranker.py\nリランカー FT (HNM+BCE)"]
+    train_rr -->|"outputs/reranker"| rerank["⑥ rerank.py\n6パターン評価\n(embed×reranker)"]
+
+    ds --> rerank
+    rerank -->|"rerank_metrics.json\nrerank_examples.json"| app["app.py\n(Gradio ビューア)"]
 ```
 
 ---
@@ -44,27 +48,67 @@
 | モジュール | 責務 | 主な入力 | 主な出力 |
 |---|---|---|---|
 | `config.py` | YAML 設定を dataclass に読み込み、CLI オーバーライド引数（`--profile` ＋ `--epochs` などセクション別）を提供 | `params*.yaml` ＋ CLI | `Config` オブジェクト |
-| `prompts.py` | テンプレート組み合わせでキャプションを生成（決定的） | 件数・seed | `list[Sample]` |
-| `generate_data.py` | キャプションから画像を生成し datasets 化して保存 | `Config` | `data*/train`, `data*/eval` |
+| `preference.py` | 潜在嗜好モデルの定義・サンプリング・argmax-appeal 計算（7 嗜好軸・非加法交互作用） | `Config` | `PreferenceModel`, `list[Sample]` |
+| `prompts.py` | preference モデルからキャプションを生成（preference タスク）、またはテンプレート組み合わせで生成（subject タスク） | `Config`, `PreferenceModel` | `list[Sample]` |
+| `image_cache.py` | 同一入力の画像生成をスキップするファイルキャッシュ | キャプション＋seed | キャッシュ済み `PIL.Image` |
+| `generate_data.py` | キャプションから画像を生成し datasets 化して保存 | `Config` | `data/train`, `data/eval` |
 | `models.py` | 埋め込みモデルのロード（attention フォールバック付き） | `Config`, model_id | `SentenceTransformer` |
-| `evaluate.py` | テキスト→画像検索の精度を IR 評価器で測定 | `data*/eval`, モデル | `metrics_*.json` |
-| `train.py` | MNRL で埋め込みモデルをファインチューニング | `data*/train`, `Config` | `outputs*/model` |
-| `train_reranker.py` | 負例マイニング＋BCE でリランカーをファインチューニング | `data*/train`, `Config` | `<reranker.model_dir>` |
-| `rerank.py` | 埋め込み検索 top-k を Reranker（FT 済み優先）で再ランク | `data*/eval`, モデル | `rerank_examples.json` |
-| `app.py` | 成果物（メトリクス・データ・リランク結果）を Gradio で可視化 | `data*/`, `outputs*/` | Web UI |
+| `evaluate.py` | ペルソナ→画像検索の精度を IR 評価器で測定 | `data/eval`, モデル | `metrics_*.json` |
+| `train.py` | MNRL で埋め込みモデルをファインチューニング | `data/train`, `Config` | `outputs/model` |
+| `train_reranker.py` | Hard Negative Mining＋BCE でリランカーをファインチューニング | `data/train`, `Config` | `outputs/reranker` |
+| `rerank.py` | 埋め込み検索 top-k を Reranker（base/ft）で再ランク、6 パターン評価 | `data/eval`, モデル | `rerank_metrics.json`, `rerank_examples.json` |
+| `tracking.py` | MLflow へのメトリクス・設定・タイミング記録（全ステージ共通） | run 引数・metrics dict | MLflow run |
+| `figures.py` | 結果可視化用図の生成（sample_grid / retrieval_before_after 等） | `data/`, `outputs/` | PNG 画像 |
+| `app.py` | 成果物（メトリクス・データ・リランク結果）を Gradio で可視化 | `data/`, `outputs/` | Web UI |
 
 ### 依存関係（import グラフ）
 
-```
-config.py   ← すべてのモジュールが依存（設定・パス解決）
-models.py   ← evaluate.py / train.py / rerank.py（モデルロードを共通化）
-evaluate.py ← train.py（build_ir_evaluator を学習中の途中評価に再利用）
-prompts.py  ← generate_data.py
+```mermaid
+graph LR
+    config["config.py"]
+    tracking["tracking.py"]
+    preference["preference.py"]
+    image_cache["image_cache.py"]
+    prompts["prompts.py"]
+    models["models.py"]
+    evaluate["evaluate.py"]
+    train["train.py"]
+    train_reranker["train_reranker.py"]
+    rerank["rerank.py"]
+    figures["figures.py"]
+    gendata["generate_data.py"]
+
+    config --> gendata
+    config --> models
+    config --> evaluate
+    config --> train
+    config --> train_reranker
+    config --> rerank
+    config --> figures
+
+    tracking --> gendata
+    tracking --> evaluate
+    tracking --> train
+    tracking --> train_reranker
+    tracking --> rerank
+
+    preference --> prompts
+    preference --> gendata
+    prompts --> gendata
+    image_cache --> gendata
+
+    models --> evaluate
+    models --> train
+    models --> rerank
+
+    evaluate --> train
 ```
 
 ポイント:
-- **`models.py` の共通化**: 学習と評価で「同じ手順」でモデルを構築するため、ロード処理を 1 箇所に集約。
-- **`evaluate.build_ir_evaluator` の再利用**: 学習スクリプトが独自に評価器を組まず、評価モジュールの実装を共有することで、学習中の途中評価と最終評価の指標定義がズレないようにしています。
+- **`config.py` / `tracking.py`**: 全ステージが依存する共通基盤。設定解決と MLflow 記録を一元管理。
+- **`models.py` の共通化**: 学習・評価・リランクで同じ手順でモデルをロードするため、ロード処理を 1 箇所に集約。
+- **`evaluate.build_ir_evaluator` の再利用**: `train.py` が独自に評価器を組まず評価モジュールの実装を共有することで、学習中途中評価と最終評価の指標定義がズレない。
+- **`preference.py`**: データ生成の中心。`prompts.py` が preference モデルを使ってキャプションを生成し、`generate_data.py` が argmax-appeal ラベリングに使用。
 
 ---
 

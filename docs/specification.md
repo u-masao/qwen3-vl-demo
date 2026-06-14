@@ -83,6 +83,11 @@ first-level キー（`common` / `data` / `image_gen` / `embedding` / `reranker` 
 | `data.num_eval` | int | `200` | 評価ペア数 |
 | `data.image_size` | int | `512` | 生成画像の一辺 px |
 | `data.relevant_same_category` | bool | `false` | 同カテゴリ画像も正解とみなすか（緩い評価） |
+| `data.task` | str | `preference` | データ生成タスク（`preference`：潜在嗜好モデル／`subject`：legacy） |
+| `preference.gamma` | float | `2.0` | 非加法交互作用の強度（0 → 加法的、大きいほどリランカー伸びしろ増） |
+| `preference.lam` | float | `0.3` | 人気バイアスの強度 |
+| `preference.sigma` | float | `0.1` | 個人ノイズの標準偏差 |
+| `preference.sharpness` | float | `2.0` | argmax 計算時のスコア鋭さ |
 | `image_gen.model_id` | str | `black-forest-labs/FLUX.2-klein-4B` | `stub` でスタブ画像 |
 | `image_gen.num_inference_steps` | int | `4` | 拡散ステップ数（FLUX.2-klein は 4 ステップ） |
 | `image_gen.guidance_scale` | float | `1.0` | FLUX.2-klein の推奨値 |
@@ -97,9 +102,9 @@ first-level キー（`common` / `data` / `image_gen` / `embedding` / `reranker` 
 | `reranker.top_k` | int | `10` | リランク対象の上位件数 |
 | `reranker.model_dir` | str | `outputs/reranker` | FT 済みリランカーの保存先 |
 | `reranker.num_negatives` | int | `3` | リランカー学習時の正例あたり負例数 |
-| `reranker.max_pixels` | int\|null | `200704` | リランク時の画像トークン上限（`null` で無制限。Issue #11） |
+| `reranker.max_pixels` | int\|null | `100352` | リランク時の画像トークン上限（`null` で無制限。Issue #11 で 16GB VRAM 対策として半減） |
 | `train.epochs` | int | `1` | エポック数 |
-| `train.per_device_batch_size` | int | `4` | バッチサイズ（MNRL の負例数に直結） |
+| `train.per_device_batch_size` | int | `2` | バッチサイズ（MNRL の負例数に直結。4→2 に下げて 16GB に収める。Issue #11） |
 | `train.gradient_accumulation_steps` | int | `1` | 勾配累積 |
 | `train.learning_rate` | float | `2.0e-5` | 学習率 |
 | `train.warmup_ratio` | float | `0.1` | ウォームアップ比率 |

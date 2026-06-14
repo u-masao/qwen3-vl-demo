@@ -7,7 +7,7 @@
 
 ## 1. 背景
 
-前回実験（`docs/experiment_report_subject_query.md`）では、クエリを主語単語（`"cat"` 等）に変更したところ、ベースモデルが Accuracy@1 = 1.0 / NDCG@10 = 1.0 を達成してしまい FT 効果をまったく測定できないという問題が生じた。
+前回実験（`docs/experiments/experiment_report_subject_query.md`）では、クエリを主語単語（`"cat"` 等）に変更したところ、ベースモデルが Accuracy@1 = 1.0 / NDCG@10 = 1.0 を達成してしまい FT 効果をまったく測定できないという問題が生じた。
 
 Subject クエリが失敗した根本原因は、「猫の画像を探すクエリに猫の画像を返す」というタスクが Qwen3-VL-Embedding-2B の事前学習で既に完璧に習得されている能力だった点にある。FT で学ぶ余地がなく、評価も FT 効果を示せなかった。
 
