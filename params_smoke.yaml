@@ -23,7 +23,7 @@ data:
   num_eval: 4
   image_size: 64
   relevant_same_category: false
-  task: subject            # override to "preference" (e.g. --task preference) to smoke-test the new path
+  task: preference         # default path; override with --task subject for the legacy path
 
 # Preference task knobs (used only when data.task = preference).
 preference:

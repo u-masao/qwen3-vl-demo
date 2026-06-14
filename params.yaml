@@ -22,11 +22,13 @@ data:
   # If true, images sharing the query's category also count as relevant during
   # evaluation (looser). Unused when persona-based evaluation is active.
   relevant_same_category: false
-  # Data-generation task. "subject" = legacy (arbitrary subject->persona map).
-  # "preference" = human-like preference model (latent taste axes + archetype
-  # mixtures + non-additive interactions); each image is labelled with its
-  # argmax-appeal persona, so the eval/train/rerank pipeline is unchanged.
-  task: subject
+  # Data-generation task. Default "preference" = human-like preference model
+  # (latent taste axes + archetype mixtures + non-additive interactions); each
+  # image is labelled with its argmax-appeal persona, so the eval/train/rerank
+  # pipeline is unchanged. The non-additive structure gives the reranker real
+  # headroom (see docs/experiment_report_preference_gamma_sweep.md).
+  # "subject" = legacy (arbitrary subject->persona map); opt-in via --task subject.
+  task: preference
 
 # Preference task knobs (only used when data.task = preference). gamma is the
 # interaction strength: 0 => additive (reranker has ~no headroom, reproduces the

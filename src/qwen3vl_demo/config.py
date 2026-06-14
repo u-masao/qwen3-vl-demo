@@ -75,10 +75,11 @@ class DataCfg:
     # True にすると、評価時に「同じカテゴリの画像」も正解とみなす（緩い評価）。
     # 既定の False はキャプションと画像の厳密な 1 対 1 対応のみを正解とする。
     relevant_same_category: bool = False
-    # データ生成タスクの選択。"subject"（既存：subject の恣意的割当）か
-    # "preference"（人間の嗖好モデルで属性を生成し argmax appeal をペルソナラベルにする）。
+    # データ生成タスクの選択。既定は "preference"（人間の嗖好モデルで属性を生成し
+    # argmax appeal をペルソナラベルにする＝リランカーの伸びしろがある本流）。
+    # "subject" は legacy（subject の恣意的割当・二値 relevance）で opt-in 用。
     # どちらも同一スキーマを出力するため、評価・学習・リランクの下流は不変。
-    task: str = "subject"
+    task: str = "preference"
 
 
 @dataclass

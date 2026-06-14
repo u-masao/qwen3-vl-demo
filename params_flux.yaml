@@ -32,7 +32,7 @@ data:
   num_eval: 50
   image_size: 512
   relevant_same_category: false
-  task: subject            # "subject"(legacy) | "preference"(human-like preference model)
+  task: preference         # "preference"(default, human-like model) | "subject"(legacy)
 
 # Preference task knobs (used only when data.task = preference). gamma = interaction strength.
 preference:
