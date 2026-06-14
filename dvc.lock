@@ -721,12 +721,12 @@ stages:
       size: 4055
     - path: src/qwen3vl_demo/train_reranker.py
       hash: md5
-      md5: 7c6ebd827b0e24f5644d51848332f64c
-      size: 13720
+      md5: 1120ec941d64d51547fb77ddc4c700a1
+      size: 13753
     outs:
     - path: outputs/reranker
       hash: md5
-      md5: dbac2428a2eb0a2544a1364eb5aae763.dir
+      md5: 2f6617d1e14b19813eaf152ff6c26e5a.dir
       size: 4266677373
       nfiles: 18
   generate_data:
@@ -746,8 +746,8 @@ stages:
       size: 4420
     - path: src/qwen3vl_demo/preference.py
       hash: md5
-      md5: ba6f26c583c7439c28aaa22f30d93142
-      size: 16474
+      md5: 9c67dedb0ac25aaa224184f758de48e5
+      size: 17497
     - path: src/qwen3vl_demo/prompts.py
       hash: md5
       md5: b026cdd7ce088d945332b4c76a76cedb
@@ -883,7 +883,7 @@ stages:
       nfiles: 14
     - path: outputs/reranker
       hash: md5
-      md5: dbac2428a2eb0a2544a1364eb5aae763.dir
+      md5: 2f6617d1e14b19813eaf152ff6c26e5a.dir
       size: 4266677373
       nfiles: 18
     - path: src/qwen3vl_demo/models.py
@@ -892,8 +892,8 @@ stages:
       size: 4055
     - path: src/qwen3vl_demo/rerank.py
       hash: md5
-      md5: 3a832c29ab596d3e9eed35a4e49907c7
-      size: 21497
+      md5: 8dbae0b1c7e48bdb44b3718f2f95f1f7
+      size: 21491
     - path: src/qwen3vl_demo/tracking.py
       hash: md5
       md5: 1ffded381d8a1a20452d026fcbaab42d
@@ -901,9 +901,9 @@ stages:
     outs:
     - path: outputs/rerank_examples.json
       hash: md5
-      md5: 97e47e761375f06c2d31f29a8b983ed7
+      md5: f6d7136f17f2a87fb68f019494afe8fc
       size: 1729
     - path: outputs/rerank_metrics.json
       hash: md5
-      md5: c7053e11fe4e16ab77ed5343fb8f7833
+      md5: ce78bdbb85d648fe6a94a40e6b0aeaa7
       size: 1556
