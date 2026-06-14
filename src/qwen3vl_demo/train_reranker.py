@@ -316,7 +316,11 @@ def main() -> None:
     cfg = config_from_args(args)
     # run は CLI 全体（負例マイニング・モデルロード・学習）を覆う。
     with cli_run(
-        TRAIN_EXPERIMENT_NAME, "train_reranker", args=args, cfg=cfg, tags={"stage": "train_reranker"}
+        TRAIN_EXPERIMENT_NAME,
+        "train_reranker",
+        args=args,
+        cfg=cfg,
+        tags={"stage": "train_reranker"},
     ):
         train_reranker(cfg)
 

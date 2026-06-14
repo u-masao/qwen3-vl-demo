@@ -315,9 +315,7 @@ def _log_rerank_variants(
                 log_metrics(variant_time)
 
 
-def run_rerank(
-    cfg: Config, num_queries: int = 5, args: argparse.Namespace | None = None
-) -> None:
+def run_rerank(cfg: Config, num_queries: int = 5, args: argparse.Namespace | None = None) -> None:
     """6 パターンの 2 段階検索を評価し、メトリクスと事例を保存する。
 
     stage 全体の run（System Metrics・全設定）は呼び出し側（``main()`` の :func:`cli_run`）が

@@ -101,7 +101,9 @@ def build_sample_grid(cfg: Config, split: str, n: int, out_dir: Path) -> Path | 
     """
     ds_path = cfg.data_path / split
     if not ds_path.exists():
-        logger.warning("データセットが見つかりません: %s（先に `make data` 等を実行してください）", ds_path)
+        logger.warning(
+            "データセットが見つかりません: %s（先に `make data` 等を実行してください）", ds_path
+        )
         return None
 
     ds = load_from_disk(str(ds_path))
@@ -178,6 +180,7 @@ def build_retrieval_before_after(
     pref_model = None
     if cfg.data.task == "preference":
         from .preference import load_model
+
         pref_path = cfg.data_path / "preference_model.json"
         if pref_path.exists():
             pref_model = load_model(pref_path)
@@ -249,8 +252,9 @@ def build_retrieval_before_after(
         height_ratios += [text_h, 1.0, 1.0]
     fig_h = sum(height_ratios) * 1.9
     fig = plt.figure(figsize=(k * 1.8, fig_h))
-    gs = fig.add_gridspec(len(height_ratios), k, height_ratios=height_ratios,
-                          hspace=0.1, wspace=0.06)
+    gs = fig.add_gridspec(
+        len(height_ratios), k, height_ratios=height_ratios, hspace=0.1, wspace=0.06
+    )
 
     # 後でブロックを囲む枠線・段ラベルを描くために、各段の axes を覚えておく。
     block_geom: list[dict] = []
@@ -264,9 +268,13 @@ def build_retrieval_before_after(
         ax_text.axis("off")
         # 画像の左端ではなく、枠内に確保したラベル帯のぶんだけ右に寄せて書き出す。
         ax_text.text(
-            0.0, 0.5,
+            0.0,
+            0.5,
             _persona_caption(queries[qi], caption_n),
-            ha="left", va="center", fontsize=12, color="#2ca02c",
+            ha="left",
+            va="center",
+            fontsize=12,
+            color="#2ca02c",
             transform=ax_text.transAxes,
         )
 
@@ -317,17 +325,27 @@ def build_retrieval_before_after(
         x1 = max(p.x1 for p in boxes)
         y0 = min(p.y0 for p in boxes)
         y1 = max(p.y1 for p in boxes)
-        overlay.add_patch(Rectangle(
-            (x0 - pad_l, y0 - pad_b),
-            (x1 - x0) + pad_l + pad_r, (y1 - y0) + pad_t + pad_b,
-            fill=False, edgecolor="#888888", linewidth=1.2,
-        ))
+        overlay.add_patch(
+            Rectangle(
+                (x0 - pad_l, y0 - pad_b),
+                (x1 - x0) + pad_l + pad_r,
+                (y1 - y0) + pad_t + pad_b,
+                fill=False,
+                edgecolor="#888888",
+                linewidth=1.2,
+            )
+        )
         # 段ラベル（Base model / Fine-Tuned model）を枠の内側・左の帯に縦書きで。
         for label, axlist in g["rows"].items():
             p = axlist[0].get_position()
             overlay.text(
-                x0 - pad_l * 0.45, (p.y0 + p.y1) / 2, label,
-                rotation=90, ha="center", va="center", fontsize=11,
+                x0 - pad_l * 0.45,
+                (p.y0 + p.y1) / 2,
+                label,
+                rotation=90,
+                ha="center",
+                va="center",
+                fontsize=11,
             )
     out_path = out_dir / "retrieval_before_after.png"
     fig.savefig(out_path, dpi=120, bbox_inches="tight")
@@ -359,13 +377,20 @@ def main() -> None:
     )
     parser = argparse.ArgumentParser(description="README 用のサンプル画像（図）を生成する。")
     add_config_args(parser)
-    parser.add_argument("--split", type=str, default="eval", help="グリッドに使うスプリット（既定: eval）。")
-    parser.add_argument("--num-grid", type=int, default=12, help="グリッドに並べる画像枚数（既定: 12）。")
+    parser.add_argument(
+        "--split", type=str, default="eval", help="グリッドに使うスプリット（既定: eval）。"
+    )
+    parser.add_argument(
+        "--num-grid", type=int, default=12, help="グリッドに並べる画像枚数（既定: 12）。"
+    )
     parser.add_argument(
         "--num-queries", type=int, default=3, help="Before/After 図に並べるクエリ数（既定: 3）。"
     )
     parser.add_argument(
-        "--top-k", type=int, default=5, help="Before/After 図で 1 クエリあたり表示する上位件数（既定: 5）。"
+        "--top-k",
+        type=int,
+        default=5,
+        help="Before/After 図で 1 クエリあたり表示する上位件数（既定: 5）。",
     )
     parser.add_argument(
         "--out-dir", type=str, default=DEFAULT_OUT_DIR, help=f"出力先（既定: {DEFAULT_OUT_DIR}）。"

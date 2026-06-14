@@ -66,12 +66,13 @@ _PREFIX = "synthetic-image-retrieval_cosine_"
 
 def _strip_prefix(key: str) -> str:
     """メトリクスキーから接頭辞を除いて短い表示名にする。"""
-    return key[len(_PREFIX):] if key.startswith(_PREFIX) else key
+    return key[len(_PREFIX) :] if key.startswith(_PREFIX) else key
 
 
 # ---------------------------------------------------------------------------
 # タブ 1（メトリクス比較）用のヘルパ
 # ---------------------------------------------------------------------------
+
 
 def load_metrics(output_dir_label: str) -> tuple[dict, dict]:
     """選択された出力ディレクトリから、ベース／FT 後のメトリクス JSON を読み込む。
@@ -154,12 +155,14 @@ def make_metrics_table(output_dir_label: str) -> list[list]:
             f = ft.get(full_key)
             # 両方の値が揃っているときだけ差分を計算する。
             delta = (f - b) if (b is not None and f is not None) else None
-            rows.append([
-                short_key,
-                f"{b:.4f}" if b is not None else "—",
-                f"{f:.4f}" if f is not None else "—",
-                f"{delta:+.4f}" if delta is not None else "—",
-            ])
+            rows.append(
+                [
+                    short_key,
+                    f"{b:.4f}" if b is not None else "—",
+                    f"{f:.4f}" if f is not None else "—",
+                    f"{delta:+.4f}" if delta is not None else "—",
+                ]
+            )
     return rows
 
 
@@ -167,9 +170,11 @@ def make_metrics_table(output_dir_label: str) -> list[list]:
 # タブ 2（データセット閲覧）用のヘルパ
 # ---------------------------------------------------------------------------
 
+
 def load_dataset_split(data_dir_label: str, split: str):
     """指定ディレクトリ・スプリットの datasets を読み込む（無ければ None）。"""
     from datasets import load_from_disk
+
     path = DATA_DIRS[data_dir_label] / split
     if not path.exists():
         return None
@@ -212,6 +217,7 @@ def dataset_nav(data_dir_label: str, split: str, idx: int, direction: str):
 # タブ 3（Reranking デモ）用のヘルパ
 # ---------------------------------------------------------------------------
 
+
 def load_rerank_examples(output_dir_label: str) -> list[list]:
     """rerank_examples.json を読み、表表示用の行リストへ整形する。
 
@@ -224,7 +230,7 @@ def load_rerank_examples(output_dir_label: str) -> list[list]:
     rows = []
     for ex in examples:
         rb = ex.get("rank_before_rerank")  # リランク前の正解順位
-        ra = ex.get("rank_after_rerank")   # リランク後の正解順位
+        ra = ex.get("rank_after_rerank")  # リランク後の正解順位
         improved = ""
         if rb is not None and ra is not None:
             # 順位は小さいほど上位。ra < rb なら順位が上がった＝改善。
@@ -234,14 +240,16 @@ def load_rerank_examples(output_dir_label: str) -> list[list]:
                 improved = "→ 変化なし"
             else:
                 improved = "↓ 悪化"
-        rows.append([
-            ex.get("query", ""),
-            ex.get("target", ""),
-            rb if rb is not None else "—",
-            ra if ra is not None else "—",
-            ex.get("top_k", ""),
-            improved,
-        ])
+        rows.append(
+            [
+                ex.get("query", ""),
+                ex.get("target", ""),
+                rb if rb is not None else "—",
+                ra if ra is not None else "—",
+                ex.get("top_k", ""),
+                improved,
+            ]
+        )
     return rows
 
 
@@ -341,7 +349,9 @@ def make_rerank_metrics_figure(output_dir_label: str):
     ax.set_xticklabels(mkeys, rotation=30, ha="right", fontsize=9)
     ax.set_ylim(0, 1.05)
     ax.set_ylabel("Score")
-    ax.set_title(f"2 段階検索 主要 4 パターン比較 — {output_dir_label}", fontsize=11, fontweight="bold")
+    ax.set_title(
+        f"2 段階検索 主要 4 パターン比較 — {output_dir_label}", fontsize=11, fontweight="bold"
+    )
     ax.legend(title="埋め込み+リランカー", fontsize=8)
     ax.grid(axis="y", linestyle="--", alpha=0.4)
     fig.tight_layout()
@@ -351,6 +361,7 @@ def make_rerank_metrics_figure(output_dir_label: str):
 # ---------------------------------------------------------------------------
 # UI 構築
 # ---------------------------------------------------------------------------
+
 
 def build_app() -> gr.Blocks:
     """Gradio の Blocks アプリを組み立てて返す。"""
@@ -364,7 +375,6 @@ def build_app() -> gr.Blocks:
         )
 
         with gr.Tabs():
-
             # ----------------------------------------------------------------
             # タブ 1: メトリクス比較
             # ----------------------------------------------------------------
@@ -388,7 +398,9 @@ def build_app() -> gr.Blocks:
                     return make_metrics_figure(label), make_metrics_table(label)
 
                 # ドロップダウン変更時と、アプリ初回ロード時の両方で更新する。
-                out_dir_dd.change(refresh_metrics, inputs=out_dir_dd, outputs=[metrics_plot, metrics_table])
+                out_dir_dd.change(
+                    refresh_metrics, inputs=out_dir_dd, outputs=[metrics_plot, metrics_table]
+                )
                 demo.load(refresh_metrics, inputs=out_dir_dd, outputs=[metrics_plot, metrics_table])
 
             # ----------------------------------------------------------------
@@ -419,7 +431,9 @@ def build_app() -> gr.Blocks:
                 with gr.Row():
                     sample_img = gr.Image(label="画像", type="pil", height=350)
                     with gr.Column():
-                        anchor_txt = gr.Textbox(label="キャプション (anchor)", lines=3, interactive=False)
+                        anchor_txt = gr.Textbox(
+                            label="キャプション (anchor)", lines=3, interactive=False
+                        )
                         category_txt = gr.Textbox(label="カテゴリ", interactive=False)
 
                 def _load(data_dir_label, split):
@@ -429,12 +443,16 @@ def build_app() -> gr.Blocks:
 
                 def _prev(data_dir_label, split, idx):
                     """「前へ」ボタン。"""
-                    img, anchor, cat, new_idx, counter = dataset_nav(data_dir_label, split, idx, "prev")
+                    img, anchor, cat, new_idx, counter = dataset_nav(
+                        data_dir_label, split, idx, "prev"
+                    )
                     return img, anchor, cat, new_idx, counter
 
                 def _next(data_dir_label, split, idx):
                     """「次へ」ボタン。"""
-                    img, anchor, cat, new_idx, counter = dataset_nav(data_dir_label, split, idx, "next")
+                    img, anchor, cat, new_idx, counter = dataset_nav(
+                        data_dir_label, split, idx, "next"
+                    )
                     return img, anchor, cat, new_idx, counter
 
                 # すべてのイベントが更新する出力ウィジェット群（順序が一致している必要がある）。
@@ -442,8 +460,12 @@ def build_app() -> gr.Blocks:
 
                 data_dir_dd.change(_load, inputs=[data_dir_dd, split_dd], outputs=_ds_outputs)
                 split_dd.change(_load, inputs=[data_dir_dd, split_dd], outputs=_ds_outputs)
-                prev_btn.click(_prev, inputs=[data_dir_dd, split_dd, idx_state], outputs=_ds_outputs)
-                next_btn.click(_next, inputs=[data_dir_dd, split_dd, idx_state], outputs=_ds_outputs)
+                prev_btn.click(
+                    _prev, inputs=[data_dir_dd, split_dd, idx_state], outputs=_ds_outputs
+                )
+                next_btn.click(
+                    _next, inputs=[data_dir_dd, split_dd, idx_state], outputs=_ds_outputs
+                )
                 demo.load(_load, inputs=[data_dir_dd, split_dd], outputs=_ds_outputs)
 
             # ----------------------------------------------------------------
@@ -457,7 +479,14 @@ def build_app() -> gr.Blocks:
                     interactive=True,
                 )
                 rerank_table = gr.Dataframe(
-                    headers=["クエリ", "正解画像ID", "Rerank前ランク", "Rerank後ランク", "Top-K", "結果"],
+                    headers=[
+                        "クエリ",
+                        "正解画像ID",
+                        "Rerank前ランク",
+                        "Rerank後ランク",
+                        "Top-K",
+                        "結果",
+                    ],
                     datatype=["str", "str", "number", "number", "number", "str"],
                     label="Rerank前後のランク比較",
                     interactive=False,
@@ -468,7 +497,17 @@ def build_app() -> gr.Blocks:
                     """リランク事例を読み込んで表に流す。データが無ければ空表を返す。"""
                     rows = load_rerank_examples(label)
                     if not rows:
-                        return gr.Dataframe(value=[], headers=["クエリ", "正解画像ID", "Rerank前ランク", "Rerank後ランク", "Top-K", "結果"])
+                        return gr.Dataframe(
+                            value=[],
+                            headers=[
+                                "クエリ",
+                                "正解画像ID",
+                                "Rerank前ランク",
+                                "Rerank後ランク",
+                                "Top-K",
+                                "結果",
+                            ],
+                        )
                     return rows
 
                 rerank_dir_dd.change(_load_rerank, inputs=rerank_dir_dd, outputs=rerank_table)
@@ -496,7 +535,9 @@ def build_app() -> gr.Blocks:
                 def _refresh_rr4(label):
                     """ドロップダウン変更時／初期表示時にグラフと表を再生成する。"""
                     headers, rows = make_rerank_metrics_table(label)
-                    return make_rerank_metrics_figure(label), gr.Dataframe(value=rows, headers=headers)
+                    return make_rerank_metrics_figure(label), gr.Dataframe(
+                        value=rows, headers=headers
+                    )
 
                 rr4_dir_dd.change(_refresh_rr4, inputs=rr4_dir_dd, outputs=[rr4_plot, rr4_table])
                 demo.load(_refresh_rr4, inputs=rr4_dir_dd, outputs=[rr4_plot, rr4_table])

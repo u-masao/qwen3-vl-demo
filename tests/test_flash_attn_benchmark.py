@@ -38,7 +38,7 @@ pytestmark = [
 ]
 
 MODEL_ID = "Qwen/Qwen3-VL-Embedding-2B"
-IMAGE_SIZE = 448   # 448x448 → ~1024 パッチ → flash attention の優位性が出やすい系列長
+IMAGE_SIZE = 448  # 448x448 → ~1024 パッチ → flash attention の優位性が出やすい系列長
 BATCH_SIZE = 4
 WARMUP_RUNS = 2
 BENCH_RUNS = 5
@@ -53,8 +53,7 @@ def _make_images(n: int, size: int):
 
     rng = np.random.default_rng(42)
     return [
-        Image.fromarray(rng.integers(0, 255, (size, size, 3), dtype=np.uint8))
-        for _ in range(n)
+        Image.fromarray(rng.integers(0, 255, (size, size, 3), dtype=np.uint8)) for _ in range(n)
     ]
 
 
@@ -96,12 +95,12 @@ def test_flash_attention_faster_than_eager():
 
     t_flash = _bench("flash_attention_2", images)
     t_eager = _bench("eager", images)
-    t_sdpa  = _bench("sdpa", images)  # 参考値: sdpa は内部で同等カーネルを使うため flash と同程度
+    t_sdpa = _bench("sdpa", images)  # 参考値: sdpa は内部で同等カーネルを使うため flash と同程度
 
     speedup = t_eager / t_flash
     print(f"\nflash_attention_2 : {t_flash * 1000:.1f} ms/batch")
     print(f"eager             : {t_eager * 1000:.1f} ms/batch")
-    print(f"sdpa (参考)        : {t_sdpa  * 1000:.1f} ms/batch")
+    print(f"sdpa (参考)        : {t_sdpa * 1000:.1f} ms/batch")
     print(f"speedup (eager/flash): {speedup:.2f}x  (閾値: {SPEEDUP_THRESHOLD}x)")
 
     assert speedup >= SPEEDUP_THRESHOLD, (
