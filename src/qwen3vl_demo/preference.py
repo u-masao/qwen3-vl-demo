@@ -286,6 +286,26 @@ def attributes_to_fragments(model: PreferenceModel, attrs: list[int]) -> list[st
     return [model.fragments[ax][attrs[i]] for i, ax in enumerate(model.axes)]
 
 
+def persona_preferred_fragments(
+    model: PreferenceModel, persona: str, top_k: int | None = None
+) -> list[str]:
+    """ペルソナが強く好む見た目の属性を、こだわりの強い軸順に語片で返す。
+
+    各軸の選好 θ_{p,i} について符号の向き（high/low）の語片を採り、``|θ|`` が大きい
+    （＝こだわりの強い）軸から順に並べる。``top_k`` を与えると上位だけを返す。
+    嗜好が被写体ではなく見た目の属性で表現される preference タスクで、図のラベルなど
+    人間可読な「好み」の要約に使う（``PERSONA_MAP`` の被写体ラベルとは別物）。
+    """
+    theta = model.persona_pref.get(persona, [])
+    ranked = sorted(
+        (i for i in range(len(theta)) if abs(theta[i]) > 1e-9),
+        key=lambda i: abs(theta[i]),
+        reverse=True,
+    )
+    frags = [model.fragments[model.axes[i]][1 if theta[i] > 0 else 0] for i in ranked]
+    return frags if top_k is None else frags[:top_k]
+
+
 # --- 属性の (de)シリアライズ（必要時の解析用）------------------------------
 def encode_attributes(attrs: list[int]) -> str:
     """属性ベクトルを格納用の文字列にする（"1,0,1,0,..."）。"""

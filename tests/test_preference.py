@@ -156,6 +156,40 @@ def test_attributes_to_fragments_and_codec():
     assert pref.decode_attributes("") == []
 
 
+def test_persona_preferred_fragments_orders_by_strength_and_sign():
+    m = pref.build_model()
+    persona = "user_alpha"  # retro_warm*0.6 + ornate_moody*0.4
+    theta = m.persona_pref[persona]
+
+    # top_k 無指定では「選好が 0 でない軸」だけを返す（こだわりのない軸は出さない）。
+    frags = pref.persona_preferred_fragments(m, persona)
+    n_nonzero = sum(1 for w in theta if abs(w) > 1e-9)
+    assert len(frags) == n_nonzero
+
+    # こだわりの強い（|θ| 最大）軸が先頭。符号の向きの語片が選ばれる。
+    top_axis = max(range(len(theta)), key=lambda i: abs(theta[i]))
+    expected_first = m.fragments[m.axes[top_axis]][1 if theta[top_axis] > 0 else 0]
+    assert frags[0] == expected_first
+
+    # |θ| の降順になっている。
+    strengths = [abs(theta[m.axes.index(_axis_of_fragment(m, f))]) for f in frags]
+    assert strengths == sorted(strengths, reverse=True)
+
+    # top_k で上位だけに絞れる。
+    assert pref.persona_preferred_fragments(m, persona, top_k=3) == frags[:3]
+
+    # 未知のペルソナは空。
+    assert pref.persona_preferred_fragments(m, "user_unknown") == []
+
+
+def _axis_of_fragment(m, fragment: str) -> str:
+    """語片からその軸名を引く（テスト用の逆引き）。"""
+    for ax, frags in m.fragments.items():
+        if fragment in frags:
+            return ax
+    raise AssertionError(f"語片が見つかりません: {fragment}")
+
+
 def test_save_load_roundtrip_preserves_appeal(tmp_path):
     m = pref.build_model(gamma=1.2, lam=0.4, sigma=0.05, seed=7)
     path = tmp_path / "preference_model.json"

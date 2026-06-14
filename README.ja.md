@@ -4,7 +4,7 @@
 
 **合成データだけで「画像検索の精度が上がる」体験**を、最小構成で一気通貫に再現するデモです。
 
-1. 🎨 **データ生成** — 画像生成モデル [FLUX.2-klein-4B](https://huggingface.co/black-forest-labs/FLUX.2-klein-4B) で、**人間を模した潜在嗖好モデル**から見た目の属性をサンプルしてキャプション付き画像を生成し、各画像を**最も好むペルソナ（argmax appeal）**で自動ラベリング（ペルソナ名＝検索クエリ、その画像群＝正解）
+1. 🎨 **データ生成** — 画像生成モデル [FLUX.2-klein-4B](https://huggingface.co/black-forest-labs/FLUX.2-klein-4B) で、**人間を模した潜在嗜好モデル**から見た目の属性をサンプルしてキャプション付き画像を生成し、各画像を**最も好むペルソナ（argmax appeal）**で自動ラベリング（ペルソナ名＝検索クエリ、その画像群＝正解）
 2. 📐 **ベース評価** — [Qwen3-VL-Embedding-2B](https://huggingface.co/Qwen/Qwen3-VL-Embedding-2B) のテキスト→画像検索精度（NDCG / Recall@k）を測定
 3. 🔧 **ファインチューニング** — [Sentence Transformers](https://sbert.net) で埋め込みモデルを合成ペアに適応
 4. 📈 **再評価** — 学習前後で検索精度を比較
@@ -12,7 +12,7 @@
 
 ```mermaid
 flowchart LR
-    PM["潜在嗖好モデル<br/>（7 嗖好軸・非加法）"] -->|サンプル| A["画像の属性"]
+    PM["潜在嗜好モデル<br/>（7 嗜好軸・非加法）"] -->|サンプル| A["画像の属性"]
     A -->|caption + FLUX.2-klein| I["画像"]
     A -->|argmax appeal| Q["persona<br/>（クエリ）"]
     Q --> P["(persona, image)<br/>ペア"]
@@ -22,9 +22,9 @@ flowchart LR
     R -->|上位を再ランク| RR["Qwen3-VL-<br/>Reranker-2B（FT）"]
 ```
 
-> なぜ面白いか: **人手アノテーション不要**。各画像の見た目の属性を小さな**潜在嗖好モデル**
-> （warm / vintage / ornate などの嗖好軸をペルソナごとに混合）からサンプルし、ラベルは
-> その属性を最も好むペルソナにするので、学習データがタダで無限に作れます。さらにこの嗖好は
+> なぜ面白いか: **人手アノテーション不要**。各画像の見た目の属性を小さな**潜在嗜好モデル**
+> （warm / vintage / ornate などの嗜好軸をペルソナごとに混合）からサンプルし、ラベルは
+> その属性を最も好むペルソナにするので、学習データがタダで無限に作れます。さらにこの嗜好は
 > **非加法的**（例: *warm* も *ornate* も単体では好きだが、*warm かつ ornate* は嫌い）で、
 > 内積で測る bi-encoder には表現しづらく、**cross-encoder のリランカーが効く** ＝ 2 段階検索に
 > 本物の伸びしろが生まれます（[結果](#結果)を参照）。クエリは opaque トークン（`user_alpha`）の
@@ -45,10 +45,10 @@ FT によって正解画像が上位に上がる様子が分かります:
 
 ![ファインチューニング前後の検索比較](docs/images/retrieval_before_after.png)
 
-**Gradio ビューア** — データセットの閲覧とメトリクス比較をブラウザで:
+**Gradio ビューア** — データセットの閲覧と、2 段階検索（埋め込み×リランカー）のメトリクス比較をブラウザで:
 
-![Gradio データセットタブ](docs/images/gradio_dataset.png)
-![Gradio メトリクスタブ](docs/images/gradio_metrics.png)
+![Gradio データセット閲覧タブ](docs/images/gradio_dataset.png)
+![Gradio 2段階検索（埋め込み×リランカー）タブ](docs/images/gradio_metrics.png)
 
 ---
 
@@ -257,9 +257,9 @@ make lint      # ruff
 学習データのキャプションは [`src/qwen3vl_demo/prompts.py`](src/qwen3vl_demo/prompts.py) で
 合成します（外部依存なし・seed で再現可能）。**既定の `preference` タスク**の手順:
 
-1. ペルソナの嗖好分布から二値の**嗖好属性**をサンプル（[`src/qwen3vl_demo/preference.py`](src/qwen3vl_demo/preference.py):
+1. ペルソナの嗜好分布から二値の**嗜好属性**をサンプル（[`src/qwen3vl_demo/preference.py`](src/qwen3vl_demo/preference.py):
    7 軸 — warmth / era / ornament / mood / saturation / material / setting）。
-2. 被写体（subject）は属性とは独立にランダムに選び（＝見た目は散漫・嗖好は一貫）、属性を
+2. 被写体（subject）は属性とは独立にランダムに選び（＝見た目は散漫・嗜好は一貫）、属性を
    プロンプト語片に変換: `"a photo of a cat, warm-toned, vintage, ornate intricately detailed, …"`。
 3. その属性を**最も好むペルソナ（argmax appeal）**でラベリング。非加法的な交互作用により、
    生成元ペルソナと異なることがあります。そのペルソナ名（`user_alpha`）が正解クエリ／ラベルです。

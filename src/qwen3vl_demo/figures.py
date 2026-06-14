@@ -113,23 +113,28 @@ def build_sample_grid(cfg: Config, split: str, n: int, out_dir: Path) -> Path | 
     plt = _setup_matplotlib()
     cols = 4
     rows = (len(indices) + cols - 1) // cols
-    # 行の高さは、キャプションが 3 行に折り返しても上の画像に重ならないよう広めに取る。
+    # 行の高さは、画像の下に添えるキャプションが折り返しても次の行の画像に重ならないよう広めに取る。
     fig, axes = plt.subplots(rows, cols, figsize=(cols * 2.6, rows * 3.3))
     axes = axes.flatten() if hasattr(axes, "flatten") else [axes]
 
     for ax, idx in zip(axes, indices, strict=False):
         row = ds[idx]
         ax.imshow(row["positive"])
-        # キャプション（anchor）は長いので折り返して小さく添える。
-        caption = "\n".join(textwrap.wrap(row["anchor"], width=28))
-        ax.set_title(caption, fontsize=7)
-        ax.axis("off")
+        # キャプション（anchor）は長いので折り返して画像の「下」に小さく添える。
+        # 折り返し幅は画像セル幅に近づけ、1 行をできるだけ使う（文字サイズは据え置き）。
+        caption = "\n".join(textwrap.wrap(row["anchor"], width=42))
+        ax.set_xlabel(caption, fontsize=7)
+        # 画像なので目盛り・枠線は消すが、xlabel（キャプション）は下に残す。
+        ax.set_xticks([])
+        ax.set_yticks([])
+        for spine in ax.spines.values():
+            spine.set_visible(False)
     # 余った枠は消す。
     for ax in axes[len(indices) :]:
         ax.axis("off")
 
     fig.suptitle(f"Synthetic dataset samples ({split})", fontsize=12)
-    # h_pad で行同士の縦間隔を広げ、折り返したキャプションが上の画像に重ならないようにする。
+    # h_pad で行同士の縦間隔を確保し、下に添えたキャプションが次の行の画像に重ならないようにする。
     fig.tight_layout(rect=(0, 0, 1, 0.97), h_pad=3.0)
     out_path = out_dir / "sample_grid.png"
     fig.savefig(out_path, dpi=120, bbox_inches="tight")
@@ -167,6 +172,34 @@ def build_retrieval_before_after(
     from .prompts import PERSONA_MAP
     from .rerank import _build_relevant, _retrieve_topk
 
+    # preference タスクでは「好み」は被写体ではなく見た目の属性なので、図のラベルは
+    # 嗜好モデル（persona ごとの選好ベクトル）から復元する。subject タスクでは従来どおり
+    # PERSONA_MAP の被写体名を使う。
+    pref_model = None
+    if cfg.data.task == "preference":
+        from .preference import load_model
+        pref_path = cfg.data_path / "preference_model.json"
+        if pref_path.exists():
+            pref_model = load_model(pref_path)
+        else:
+            logger.warning(
+                "preference タスクですが嗜好モデルが見つかりません: %s。"
+                "ラベルは被写体名にフォールバックします。",
+                pref_path,
+            )
+
+    def _persona_caption(persona: str, n: int) -> str:
+        """図の 1 段目に出す「このペルソナの好み」の 1 行ラベルを作る。"""
+        if pref_model is not None:
+            from .preference import persona_preferred_fragments
+
+            # 属性語片はカンマを含む（例: "ornate, intricately detailed"）ため、
+            # 区切りは中黒にして語片内のカンマと混同しないようにする。
+            frags = persona_preferred_fragments(pref_model, persona, top_k=n)
+            return f"{persona} : prefers → " + " ・ ".join(frags)
+        items = PERSONA_MAP.get(persona, [])[:n]
+        return f"{persona} : favorite → {', '.join(items)}"
+
     eval_path = cfg.data_path / "eval"
     if not eval_path.exists():
         logger.warning("eval データが見つかりません: %s（Before/After 図はスキップ）", eval_path)
@@ -185,6 +218,9 @@ def build_retrieval_before_after(
     relevant = _build_relevant(eval_ds, cfg.data.relevant_same_category)
 
     k = min(top_k, len(corpus_images))
+    # ラベルに出す「好み」の個数。preference は語片が長い（"ornate, intricately
+    # detailed" など）ので、こだわりの強い上位の軸だけに絞る。
+    caption_n = 3 if pref_model is not None else k
     show_idx = _pick_query_indices(eval_ds, num_queries)
     if not show_idx:
         logger.warning("表示できるクエリがありません。Before/After 図はスキップします。")
@@ -220,17 +256,16 @@ def build_retrieval_before_after(
     block_geom: list[dict] = []
     for b, qi in enumerate(show_idx):
         rel = relevant[qi]
-        # そのペルソナが好む被写体名（PERSONA_MAP の定義そのもの）。
-        persona_items = PERSONA_MAP.get(queries[qi], [])[:k]
         r0 = block_row0[b]
 
-        # 1 段目: 「user_xxx : favorite -> a, b, c, ...」を 1 行のテキストで。
+        # 1 段目: 「user_xxx : prefers → …（好む属性）」を 1 行のテキストで。
+        # preference タスクは見た目の属性、subject タスクは好む被写体名を出す。
         ax_text = fig.add_subplot(gs[r0, :])
         ax_text.axis("off")
         # 画像の左端ではなく、枠内に確保したラベル帯のぶんだけ右に寄せて書き出す。
         ax_text.text(
             0.0, 0.5,
-            f"{queries[qi]} : favorite -> {', '.join(persona_items)}",
+            _persona_caption(queries[qi], caption_n),
             ha="left", va="center", fontsize=12, color="#2ca02c",
             transform=ax_text.transAxes,
         )
