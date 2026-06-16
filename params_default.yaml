@@ -77,3 +77,12 @@ train:
   eval_steps: 50
   save_steps: 50
   logging_steps: 10
+
+distill:
+  # 知識蒸留: teacher → student（埋め込み bi-encoder）。詳細は src/qwen3vl_demo/distill.py。
+  #   teacher=reranker … パターン A（cross→bi, MarginMSE）。FT 済みリランカーが teacher。
+  #   teacher=oracle   … パターン B（嗖好モデルの soft label, CoSENT）。teacher はモデル不要。
+  teacher: reranker
+  model_dir: outputs/model_distilled   # 蒸留済み student 埋め込みの保存先
+  num_negatives: 3                     # 蒸留ペアの 1 クエリあたり負例数
+  temperature: 1.0                     # oracle soft relevance の温度（reranker では未使用）

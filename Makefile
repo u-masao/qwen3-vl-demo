@@ -17,11 +17,11 @@ PROFILE ?= default
 RUN := uv run
 PY := $(RUN) python -m qwen3vl_demo
 
-.PHONY: setup data eval-base train eval train-reranker rerank all figures smoke \
-        use-default use-smoke use-flux test lint repro mlflow_ui clean help
+.PHONY: setup data eval-base train eval train-reranker rerank distill eval-distill \
+        all figures smoke use-default use-smoke use-flux test lint repro mlflow_ui clean help
 
 help:
-	@echo "Targets: setup | data | eval-base | train | eval | train-reranker | rerank | all | figures | smoke | test | lint | repro | mlflow_ui | clean"
+	@echo "Targets: setup | data | eval-base | train | eval | train-reranker | rerank | distill | eval-distill | all | figures | smoke | test | lint | repro | mlflow_ui | clean"
 	@echo "Profile switch (DVC): use-default | use-smoke | use-flux  (copies params_<x>.yaml -> params.yaml)"
 	@echo "Override direct-run profile with PROFILE=default|smoke|flux (current: $(PROFILE))"
 
@@ -59,10 +59,16 @@ train-reranker:
 rerank:
 	$(PY).rerank --profile $(PROFILE)
 
+distill:
+	$(PY).distill --profile $(PROFILE)
+
+eval-distill:
+	$(PY).evaluate --profile $(PROFILE) --model outputs/model_distilled --label distilled
+
 # Full story: generate -> baseline eval -> fine-tune embed -> post eval
-#             -> fine-tune reranker -> rerank.
-all: data eval-base train eval train-reranker rerank
-	@echo "Pipeline complete. Compare outputs/metrics_base.json vs outputs/metrics_finetuned.json"
+#             -> fine-tune reranker -> rerank -> distill reranker->embed -> eval.
+all: data eval-base train eval train-reranker rerank distill eval-distill
+	@echo "Pipeline complete. Compare outputs/metrics_base.json vs outputs/metrics_finetuned.json vs outputs/metrics_distilled.json"
 
 # README figures: sample-image grid (no model) + retrieval before/after (needs the
 # fine-tuned embedding model). Writes PNGs to docs/images/. Run after `make all`.
@@ -77,7 +83,8 @@ lint:
 	$(RUN) ruff check src app.py tests
 
 # CPU end-to-end plumbing test (no heavy model downloads). Skips rerank
-# because the smoke profile has no reranker model configured.
+# because the smoke profile has no reranker model configured. The distill stage
+# runs with teacher=oracle (model-free preference teacher) so it IS exercised.
 smoke:
 	$(MAKE) data PROFILE=smoke
 	$(MAKE) eval-base PROFILE=smoke
@@ -85,6 +92,8 @@ smoke:
 	$(MAKE) eval PROFILE=smoke
 	$(MAKE) train-reranker PROFILE=smoke
 	$(MAKE) rerank PROFILE=smoke
+	$(PY).distill --profile smoke
+	$(PY).evaluate --profile smoke --model outputs_smoke/model_distilled --label distilled
 	@echo "Smoke test complete."
 
 # 再現実行ワークフロー（クリーンなツリーから DVC パイプラインを回し、結果を記録する）:

@@ -63,3 +63,10 @@ train:
   eval_steps: 5
   save_steps: 100
   logging_steps: 1
+
+distill:
+  # smoke はリランカーが null なので teacher=oracle（嗖好モデル＝モデル不要）で配線検証する。
+  teacher: oracle
+  model_dir: outputs_smoke/model_distilled
+  num_negatives: 2
+  temperature: 1.0

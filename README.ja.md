@@ -112,10 +112,28 @@ make all                     # フルパイプライン（GPU 推奨）
 | `make eval`            | FT 後の検索精度 → `outputs/metrics_finetuned.json` |
 | `make train-reranker`  | リランカーを FT → `outputs/reranker/` に保存 |
 | `make rerank`          | **6 パターン評価**（埋め込み{base,ft}×リランカー{base,ft,none}）→ `outputs/rerank_metrics.json` ＋事例 |
+| `make distill`         | **知識蒸留**（teacher → student 埋め込み）→ `outputs/model_distilled/` に保存 |
+| `make eval-distill`    | 蒸留後の検索精度 → `outputs/metrics_distilled.json` |
 
 完了後、`metrics_base.json` と `metrics_finetuned.json`（埋め込み単体）に加え、
 `rerank_metrics.json` で 2 段階検索の 6 パターン（埋め込み{base,ft}×リランカー{base,ft,none}、
 `none` は埋め込み検索のみの参考値）の NDCG / Recall / MRR を比較できます。
+
+### 知識蒸留（teacher → student 埋め込み）
+
+`make distill` は、賢いが遅い／高コストな **teacher** の知識を、内積で速い **student
+埋め込み（bi-encoder）** へ移します。狙いは「第 2 段（リランカー）や正解構造の賢さを、
+第 1 段（高速 retrieve）にどこまで降ろせるか」を測ること。teacher は 2 つから選べます
+（`distill.teacher`）:
+
+| teacher | 中身 | 損失 | 備考 |
+|---|---|---|---|
+| `reranker`（既定・パターン A） | FT 済みリランカー（cross-encoder）の関連度スコア。各クエリの (pos, neg) マージン `s_pos - s_neg` を student の類似度差で再現 | `MarginMSELoss` | 非加法的な交互作用（リランカーの伸びしろ）を bi-encoder に蒸留。`reranker.model_id` が null（smoke）ならスキップ |
+| `oracle`（パターン B） | 嗜好モデル（`preference.py`＝正解の作り手）の連続 appeal を soft relevance 化した (persona, image) ラベル | `CoSENTLoss` | teacher 推論コスト 0（モデル不要）。CLIP 程度でも CPU で回るため smoke で配線検証 |
+
+負例は `train_reranker` と同じハードネガティブマイニングで選び、student は **ベース埋め込み
+から** 学習します（蒸留単体の効果を `metrics_base` / `metrics_finetuned` と並べて比較できる）。
+teacher の切り替えは `params.yaml` の `distill.teacher`（または `--distill-teacher`）で行います。
 
 ### 結果を可視化する（Gradio）
 
@@ -181,6 +199,7 @@ uv run dvc repro
 | `train.*`（epochs, lr, batch…） | `train`, `train_reranker` → `eval`, `rerank` | `generate_data`, `eval_base` |
 | `embedding.*`（model_id, max_pixels, attn…） | `eval_base`, `train`, `eval`, `train_reranker`, `rerank` | `generate_data` |
 | `reranker.*`（model_id, top_k, negatives…） | `train_reranker`, `rerank` | `generate_data`, `eval_base`, `train`, `eval` |
+| `distill.*`（teacher, model_dir, negatives…） | `distill`, `eval_distill` | 上記以外 |
 | `common.seed/device/dtype`, `common.paths.*` | その値を渡すステージ | 渡さないステージ |
 
 単発で別の値を試す場合は、対応する CLI オーバーライドを各コマンドに渡すか（有効な `params.yaml`
@@ -285,7 +304,8 @@ qwen3-vl-demo/
 │   ├── evaluate.py        # InformationRetrievalEvaluator で NDCG/Recall
 │   ├── train.py           # MultipleNegativesRankingLoss で埋め込みを FT
 │   ├── train_reranker.py  # 負例マイニング＋BCE でリランカーを FT
-│   └── rerank.py          # 埋め込み検索 top-k → Reranker で再ランク
+│   ├── rerank.py          # 埋め込み検索 top-k → Reranker で再ランク
+│   └── distill.py         # 知識蒸留: teacher（リランカー / 嗖好モデル）→ student 埋め込み
 ├── app.py                 # Gradio 結果ビューア
 ├── tests/                 # 純 Python の単体テスト（pytest）
 ├── params.yaml            # 有効プロファイル（params_<profile>.yaml をコピー）

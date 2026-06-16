@@ -117,11 +117,31 @@ This runs the following in order (each can also be run individually):
 | `make eval`            | fine-tuned retrieval quality → `outputs/metrics_finetuned.json` |
 | `make train-reranker`  | fine-tune the reranker → `outputs/reranker/` |
 | `make rerank`          | **6-way evaluation** (embedding {base,ft} × reranker {base,ft,none}) → `outputs/rerank_metrics.json` + examples |
+| `make distill`         | **knowledge distillation** (teacher → student embedding) → `outputs/model_distilled/` |
+| `make eval-distill`    | distilled retrieval quality → `outputs/metrics_distilled.json` |
 
 Afterwards, compare `metrics_base.json` vs `metrics_finetuned.json` (embedding
 only), and `rerank_metrics.json` for the six two-stage combinations
 (embedding {base,ft} × reranker {base,ft,none}, where `none` is the
 embedding-only reference) — NDCG / Recall / MRR.
+
+### Knowledge distillation (teacher → student embedding)
+
+`make distill` transfers the knowledge of a smart-but-slow/expensive **teacher**
+into the fast inner-product **student embedding (bi-encoder)** — measuring how
+much of the second stage's (reranker) or oracle structure's intelligence can be
+pushed down into the fast first-stage retriever. Pick the teacher via
+`distill.teacher`:
+
+| teacher | what | loss | notes |
+|---|---|---|---|
+| `reranker` (default, pattern A) | FT reranker (cross-encoder) scores; student's similarity gap reproduces the teacher margin `s_pos - s_neg` per query | `MarginMSELoss` | distills the non-additive interactions (the reranker's headroom) into a bi-encoder. Skipped when `reranker.model_id` is null (smoke) |
+| `oracle` (pattern B) | preference model (`preference.py`, the label oracle) continuous appeal as soft (persona, image) relevance | `CoSENTLoss` | zero teacher-inference cost (no model). Runs on CPU even with CLIP, so it's exercised in smoke |
+
+Negatives come from the same hard-negative mining as `train_reranker`, and the
+student is trained **from the base embedding** so the distilled metrics line up
+against `metrics_base` / `metrics_finetuned`. Switch teachers via
+`distill.teacher` in `params.yaml` (or `--distill-teacher`).
 
 ### Visualize the results (Gradio)
 
@@ -190,6 +210,7 @@ the values it uses, a change re-runs just the stages that consume that value:
 | `train.*` (epochs, lr, batch…) | `train`, `train_reranker` → `eval`, `rerank` | `generate_data`, `eval_base` |
 | `embedding.*` (model_id, max_pixels, attn…) | `eval_base`, `train`, `eval`, `train_reranker`, `rerank` | `generate_data` |
 | `reranker.*` (model_id, top_k, negatives…) | `train_reranker`, `rerank` | `generate_data`, `eval_base`, `train`, `eval` |
+| `distill.*` (teacher, model_dir, negatives…) | `distill`, `eval_distill` | everything else |
 | `common.seed/device/dtype`, `common.paths.*` | the stages that pass that value | stages that don't |
 
 For a one-off run with a different value, pass the matching CLI override to any
@@ -301,7 +322,8 @@ qwen3-vl-demo/
 │   ├── evaluate.py        # InformationRetrievalEvaluator → NDCG/Recall
 │   ├── train.py           # fine-tune embeddings with MultipleNegativesRankingLoss
 │   ├── train_reranker.py  # fine-tune the reranker (negative mining + BCE)
-│   └── rerank.py          # embedding retrieval top-k → reranker
+│   ├── rerank.py          # embedding retrieval top-k → reranker
+│   └── distill.py         # knowledge distillation: teacher (reranker / oracle) → student embedding
 ├── app.py                 # Gradio results viewer
 ├── tests/                 # pure-Python unit tests (pytest)
 ├── params.yaml            # active profile (copied from params_<profile>.yaml)
