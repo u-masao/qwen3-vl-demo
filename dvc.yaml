@@ -161,76 +161,89 @@ stages:
     outs:
       - ${reranker.model_dir}
 
-  # ── 知識蒸留: teacher（リランカー / 嗖好モデル）→ student 埋め込み ────────────
-  # 既定 teacher=reranker（パターン A: cross→bi）は FT 済みリランカーを teacher にするため
-  # reranker_dir / model_dir（ハード負例マイニング）を deps に含める。teacher=oracle
-  # （パターン B）に切り替える場合は distill.teacher を params.yaml で変更する。
+  # ── 知識蒸留: teacher（リランカー / 嗖好モデル）→ student（蒸留先）────────────
+  # 蒸留先 student を複数パターン試せるよう、params の `distill_variants`（dict）を
+  # `foreach` で展開し、variant ごとに独立した `distill@<name>` ステージを生成する。
+  # キー＝variant 名＝出力ディレクトリ名（outputs/distill_<name>）。各 variant の値は cmd に
+  # `${item.*}` で展開されるので、ある variant を直すとその `distill@<name>` だけが再実行され、
+  # 他は dvc.lock のキャッシュから再利用される（パターン別キャッシュで低コストに反復できる）。
+  # teacher=reranker（パターン A: cross→bi）は FT 済みリランカーを teacher にするため
+  # reranker_dir / model_dir（ハード負例マイニング）を deps に含める。teacher=oracle の
+  # variant も同 deps だが over-declare で害はない。
   distill:
-    cmd: >
-      uv run python -m qwen3vl_demo.distill
-      --profile ${common.profile}
-      --seed ${common.seed}
-      --device ${common.device}
-      --dtype ${common.dtype}
-      --data-dir ${common.paths.data_dir}
-      --output-dir ${common.paths.output_dir}
-      --model-dir ${common.paths.model_dir}
-      --embedding-model ${embedding.model_id}
-      --attn-impl ${embedding.attn_implementation}
-      --max-pixels ${embedding.max_pixels}
-      --query-prompt-name ${embedding.query_prompt_name}
-      --reranker-model ${reranker.model_id}
-      --reranker-dir ${reranker.model_dir}
-      --reranker-max-pixels ${reranker.max_pixels}
-      --distill-teacher ${distill.teacher}
-      --distill-model-dir ${distill.model_dir}
-      --distill-num-negatives ${distill.num_negatives}
-      --distill-temperature ${distill.temperature}
-      --epochs ${train.epochs}
-      --batch-size ${train.per_device_batch_size}
-      --grad-accum ${train.gradient_accumulation_steps}
-      --lr ${train.learning_rate}
-      --warmup-ratio ${train.warmup_ratio}
-      --gradient-checkpointing ${train.gradient_checkpointing}
-      --eval-steps ${train.eval_steps}
-      --save-steps ${train.save_steps}
-      --logging-steps ${train.logging_steps}
-    deps:
-      - src/qwen3vl_demo/distill.py
-      - src/qwen3vl_demo/evaluate.py
-      - src/qwen3vl_demo/models.py
-      - src/qwen3vl_demo/preference.py
-      - src/qwen3vl_demo/train_reranker.py
-      - ${common.paths.data_dir}/train
-      - ${common.paths.data_dir}/eval
-      - ${common.paths.model_dir}
-      - ${reranker.model_dir}
-    outs:
-      - ${distill.model_dir}
+    foreach: ${distill_variants}
+    do:
+      cmd: >
+        uv run python -m qwen3vl_demo.distill
+        --profile ${common.profile}
+        --seed ${common.seed}
+        --device ${common.device}
+        --dtype ${common.dtype}
+        --data-dir ${common.paths.data_dir}
+        --output-dir ${common.paths.output_dir}
+        --model-dir ${common.paths.model_dir}
+        --embedding-model ${embedding.model_id}
+        --attn-impl ${embedding.attn_implementation}
+        --max-pixels ${embedding.max_pixels}
+        --query-prompt-name ${embedding.query_prompt_name}
+        --reranker-model ${reranker.model_id}
+        --reranker-dir ${reranker.model_dir}
+        --reranker-max-pixels ${reranker.max_pixels}
+        --distill-teacher ${item.teacher}
+        --distill-student-model ${item.student_model}
+        --distill-student-kind ${item.student_kind}
+        --distill-quantize ${item.quantize}
+        --distill-model-dir ${common.paths.output_dir}/distill_${key}
+        --distill-num-negatives ${distill.num_negatives}
+        --distill-temperature ${distill.temperature}
+        --epochs ${train.epochs}
+        --batch-size ${train.per_device_batch_size}
+        --grad-accum ${train.gradient_accumulation_steps}
+        --lr ${train.learning_rate}
+        --warmup-ratio ${train.warmup_ratio}
+        --gradient-checkpointing ${train.gradient_checkpointing}
+        --eval-steps ${train.eval_steps}
+        --save-steps ${train.save_steps}
+        --logging-steps ${train.logging_steps}
+      deps:
+        - src/qwen3vl_demo/distill.py
+        - src/qwen3vl_demo/evaluate.py
+        - src/qwen3vl_demo/models.py
+        - src/qwen3vl_demo/preference.py
+        - src/qwen3vl_demo/train_reranker.py
+        - ${common.paths.data_dir}/train
+        - ${common.paths.data_dir}/eval
+        - ${common.paths.model_dir}
+        - ${reranker.model_dir}
+      outs:
+        - ${common.paths.output_dir}/distill_${key}
 
   # ── 蒸留後評価（student 埋め込み単体の検索精度）────────────────────────────
+  # distill@<name> と対になる variant 別の評価。metrics_distill_<name>.json を吐く。
   eval_distill:
-    cmd: >
-      uv run python -m qwen3vl_demo.evaluate
-      --profile ${common.profile}
-      --seed ${common.seed}
-      --data-dir ${common.paths.data_dir}
-      --output-dir ${common.paths.output_dir}
-      --embedding-model ${embedding.model_id}
-      --attn-impl ${embedding.attn_implementation}
-      --max-pixels ${embedding.max_pixels}
-      --query-prompt-name ${embedding.query_prompt_name}
-      --model ${distill.model_dir}
-      --label distilled
-    deps:
-      - src/qwen3vl_demo/evaluate.py
-      - src/qwen3vl_demo/models.py
-      - src/qwen3vl_demo/tracking.py
-      - ${common.paths.data_dir}/eval
-      - ${distill.model_dir}
-    metrics:
-      - ${common.paths.output_dir}/metrics_distilled.json:
-          cache: false
+    foreach: ${distill_variants}
+    do:
+      cmd: >
+        uv run python -m qwen3vl_demo.evaluate
+        --profile ${common.profile}
+        --seed ${common.seed}
+        --data-dir ${common.paths.data_dir}
+        --output-dir ${common.paths.output_dir}
+        --embedding-model ${embedding.model_id}
+        --attn-impl ${embedding.attn_implementation}
+        --max-pixels ${embedding.max_pixels}
+        --query-prompt-name ${embedding.query_prompt_name}
+        --model ${common.paths.output_dir}/distill_${key}
+        --label distill_${key}
+      deps:
+        - src/qwen3vl_demo/evaluate.py
+        - src/qwen3vl_demo/models.py
+        - src/qwen3vl_demo/tracking.py
+        - ${common.paths.data_dir}/eval
+        - ${common.paths.output_dir}/distill_${key}
+      metrics:
+        - ${common.paths.output_dir}/metrics_distill_${key}.json:
+            cache: false
 
   # ── 6 パターン評価（埋め込み{base,ft} × リランカー{base,ft,none}）＋リランク事例 ──
   # base 埋め込み/リランカーは HF からダウンロード、ft はそれぞれの学習成果物を使う。

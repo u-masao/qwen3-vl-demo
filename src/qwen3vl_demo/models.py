@@ -55,26 +55,45 @@ def load_embedding_model(cfg: Config, model_id: str | None = None):
             kwargs["processor_kwargs"] = pk
         return SentenceTransformer(model_id, **kwargs)
 
-    try:
-        # まずは希望どおりの設定（既定では flash_attention_2）でロードを試みる。
-        model = _build(model_kwargs, processor_kwargs)
-    except (ImportError, ValueError, RuntimeError) as exc:
-        # flash-attn 未導入、またはプロセッサ引数が非対応 → sdpa で再試行する。
-        if model_kwargs.get("attn_implementation") == "flash_attention_2":
+    # 希望の attn 実装（None も可）。フォールバックで局所的に差し替えるため控えておく。
+    attn_impl = model_kwargs.get("attn_implementation")
+
+    def _load(pk: dict):
+        """flash → sdpa → モデル既定 と attn をフォールバックしつつロードする（pk は固定）。
+
+        Returns:
+            ``(model, used_attn_impl)``。``model_kwargs`` は変更せずローカルコピーで試す。
+        """
+        mk = dict(model_kwargs)
+        try:
+            return _build(mk, pk), mk.get("attn_implementation", "モデル既定")
+        except (ImportError, ValueError, RuntimeError) as exc:
+            if attn_impl != "flash_attention_2":
+                # flash_attention_2 以外の理由での失敗は attn フォールバックせず送出する。
+                raise
             logger.warning("  flash_attention_2 が使えません（%s）。sdpa で再試行します", exc)
             logger.warning("  flash-attn を有効にするには: uv sync --extra gpu")
-            model_kwargs["attn_implementation"] = "sdpa"
+            mk["attn_implementation"] = "sdpa"
             try:
-                model = _build(model_kwargs, processor_kwargs)
+                return _build(mk, pk), "sdpa"
             except (ImportError, ValueError, RuntimeError) as exc2:
                 # sdpa も失敗したら attention 指定を外し、モデル既定の実装に任せる。
                 logger.warning("  sdpa も失敗しました（%s）。モデル既定の実装を使います", exc2)
-                model_kwargs.pop("attn_implementation", None)
-                model = _build(model_kwargs, processor_kwargs)
-        else:
-            # flash_attention_2 以外の理由での失敗はフォールバックせず、そのまま送出する。
-            raise
+                mk.pop("attn_implementation", None)
+                return _build(mk, pk), "モデル既定"
 
-    used = model_kwargs.get("attn_implementation", "モデル既定")
+    try:
+        # まずは希望どおりの processor_kwargs（既定では max_pixels 指定）でロードを試みる。
+        model, used = _load(processor_kwargs)
+    except (ImportError, ValueError, RuntimeError) as exc:
+        # 非 Qwen の小型 student など processor_kwargs（max_pixels 等）非対応のモデル向けの救済。
+        # Qwen 正常系は最初の試行で成功するためここには到達しない。
+        if not processor_kwargs:
+            raise
+        logger.warning(
+            "  processor_kwargs=%s が使えません（%s）。これを外して再試行します", processor_kwargs, exc
+        )
+        model, used = _load({})
+
     logger.info("  attn_implementation: %s", used)
     return model

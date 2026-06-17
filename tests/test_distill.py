@@ -7,9 +7,13 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 
+from qwen3vl_demo.config import Config
 from qwen3vl_demo.distill import (
+    _resolve_student_id,
     build_margin_rows,
     build_oracle_rows,
     group_negatives,
@@ -89,6 +93,37 @@ def test_build_oracle_rows_matches_relevance_score():
         expected = relevance_score(model, personas[0], attrs_by_doc[doc])
         assert label == pytest.approx(expected)
         assert 0.0 <= label <= 1.0
+
+
+# --- _resolve_student_id（蒸留先 student の初期化元解決）---------------------
+def test_resolve_student_id_none_is_self_distill():
+    # 既定（None）＝ベース埋め込みからの自己蒸留。
+    cfg = Config()
+    cfg.distill.student_model = None
+    assert _resolve_student_id(cfg) == cfg.embedding.model_id
+
+
+def test_resolve_student_id_empty_string_is_self_distill():
+    # 空文字（DVC が "none" を None に潰す前後の取りこぼし対策）もベース扱い。
+    cfg = Config()
+    cfg.distill.student_model = ""
+    assert _resolve_student_id(cfg) == cfg.embedding.model_id
+
+
+def test_resolve_student_id_ft_uses_model_path():
+    # "ft" は FT 済み埋め込み成果物（絶対パスに解決した model_path）から継続蒸留する。
+    cfg = Config()
+    cfg.distill.student_model = "ft"
+    resolved = _resolve_student_id(cfg)
+    assert resolved == str(cfg.model_path)
+    assert Path(resolved).is_absolute()
+
+
+def test_resolve_student_id_arbitrary_id_passthrough():
+    # 任意の HF ID／ローカルパスはそのまま使う（小型 cross-modal 埋め込みへ圧縮）。
+    cfg = Config()
+    cfg.distill.student_model = "sentence-transformers/clip-ViT-B-32"
+    assert _resolve_student_id(cfg) == "sentence-transformers/clip-ViT-B-32"
 
 
 # --- fragments_to_attributes（往復）-----------------------------------------

@@ -86,3 +86,29 @@ distill:
   model_dir: outputs/model_distilled   # 蒸留済み student 埋め込みの保存先
   num_negatives: 3                     # 蒸留ペアの 1 クエリあたり負例数
   temperature: 1.0                     # oracle soft relevance の温度（reranker では未使用）
+
+# 蒸留先（student）を複数パターン試すためのマトリクス。dvc.yaml の distill@<name> /
+# eval_distill@<name>（foreach ステージ）が読む。キー＝variant 名＝出力ディレクトリ名
+# （outputs/distill_<name>）。パターンを増やすにはここへ 1 エントリ足すだけでよく、DVC は
+# variant ごとに独立してキャッシュする（1 つ直しても他は再実行されない＝低コストな反復）。
+#   teacher        … reranker（パターン A: cross→bi）/ oracle（パターン B: 嗖好モデル）
+#   student_model  … none=ベース埋め込み / ft=FT 成果物 / 任意 ID・パス（小型へ圧縮）
+#   student_kind   … bi（検索用 bi-encoder, 現状サポート）/ cross（リランカー圧縮, 今後）
+#   quantize       … none（現状サポート）/ 8bit / 4bit（QLoRA 自己蒸留, 今後・GPU 限定）
+distill_variants:
+  self:               # ①自己蒸留: ベース埋め込みから（蒸留単体の効果を測る）
+    teacher: reranker
+    student_model: none
+    student_kind: bi
+    quantize: none
+  ft_continue:        # ②FT 継続蒸留: FT 済み埋め込みを起点に蒸留する
+    teacher: reranker
+    student_model: ft
+    student_kind: bi
+    quantize: none
+  # ③小型 cross-modal 埋め込みへ圧縮する例（必要なら有効化）:
+  # clip_small:
+  #   teacher: reranker
+  #   student_model: sentence-transformers/clip-ViT-B-32
+  #   student_kind: bi
+  #   quantize: none

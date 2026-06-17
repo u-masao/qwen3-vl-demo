@@ -131,9 +131,34 @@ make all                     # フルパイプライン（GPU 推奨）
 | `reranker`（既定・パターン A） | FT 済みリランカー（cross-encoder）の関連度スコア。各クエリの (pos, neg) マージン `s_pos - s_neg` を student の類似度差で再現 | `MarginMSELoss` | 非加法的な交互作用（リランカーの伸びしろ）を bi-encoder に蒸留。`reranker.model_id` が null（smoke）ならスキップ |
 | `oracle`（パターン B） | 嗜好モデル（`preference.py`＝正解の作り手）の連続 appeal を soft relevance 化した (persona, image) ラベル | `CoSENTLoss` | teacher 推論コスト 0（モデル不要）。CLIP 程度でも CPU で回るため smoke で配線検証 |
 
-負例は `train_reranker` と同じハードネガティブマイニングで選び、student は **ベース埋め込み
-から** 学習します（蒸留単体の効果を `metrics_base` / `metrics_finetuned` と並べて比較できる）。
-teacher の切り替えは `params.yaml` の `distill.teacher`（または `--distill-teacher`）で行います。
+負例は `train_reranker` と同じハードネガティブマイニングで選びます。既定では student を
+**ベース埋め込みから** 学習します（自己蒸留。蒸留単体の効果を `metrics_base` /
+`metrics_finetuned` と並べて比較できる）。
+
+#### 蒸留先（student）を複数パターン試す（`distill_variants`）
+
+蒸留先 **student** は切り替え可能で、複数パターンを試せます。各パターンは `params.yaml` の
+`distill_variants` の 1 エントリで、DVC がこれを **独立・個別キャッシュ**のステージ
+`distill@<name>` / `eval_distill@<name>` に展開します（出力先 `outputs/distill_<name>`、
+メトリクス `metrics_distill_<name>.json`）。パターンを増やすにはエントリを 1 つ足すだけ。
+**DVC は variant ごとにキャッシュ**するので、1 つ直してもそのステージだけ再実行され、他は
+キャッシュ再利用＝低コストに反復できます。
+
+| フィールド | 値 | 意味 |
+|---|---|---|
+| `teacher` | `reranker` / `oracle` | teacher（上記パターン A / B） |
+| `student_model` | `none` / `ft` / 任意 ID・パス | 初期化元: `none`=ベース埋め込み（自己蒸留）, `ft`=FT 済み埋め込みから継続, それ以外=小型 cross-modal 埋め込みへ圧縮 |
+| `student_kind` | `bi`（対応済み）/ `cross`（今後） | bi-encoder（検索）か reranker（cross-encoder）圧縮か |
+| `quantize` | `none`（対応済み）/ `8bit` / `4bit`（今後） | 量子化自己蒸留（QLoRA, GPU 限定） |
+
+> 注: `bi` student はクエリ **テキスト**と文書 **画像**を同一空間へ写す必要があるため、
+> `student_model` は *cross-modal* 埋め込みでなければなりません。小型 multimodal 埋め込みは
+> 選択肢が乏しいため、量子化（同一アーキのまま縮小）が最も現実的な「小型 student」ルートです。
+> `student_kind: cross` と `quantize: {8bit,4bit}` は後続フェーズで対応予定で、現状は明示的に
+> エラーになります。
+
+単発実行で個別に上書きしたい場合は `--distill-student-model` / `--distill-student-kind` /
+`--distill-quantize` / `--distill-teacher` を使います。
 
 ### 結果を可視化する（Gradio）
 
@@ -199,7 +224,8 @@ uv run dvc repro
 | `train.*`（epochs, lr, batch…） | `train`, `train_reranker` → `eval`, `rerank` | `generate_data`, `eval_base` |
 | `embedding.*`（model_id, max_pixels, attn…） | `eval_base`, `train`, `eval`, `train_reranker`, `rerank` | `generate_data` |
 | `reranker.*`（model_id, top_k, negatives…） | `train_reranker`, `rerank` | `generate_data`, `eval_base`, `train`, `eval` |
-| `distill.*`（teacher, model_dir, negatives…） | `distill`, `eval_distill` | 上記以外 |
+| `distill.*`（num_negatives, temperature…） | すべての `distill@*`, `eval_distill@*` | 上記以外 |
+| `distill_variants.<name>.*` | その `distill@<name>`, `eval_distill@<name>` のみ | 他の variant はキャッシュ維持 |
 | `common.seed/device/dtype`, `common.paths.*` | その値を渡すステージ | 渡さないステージ |
 
 単発で別の値を試す場合は、対応する CLI オーバーライドを各コマンドに渡すか（有効な `params.yaml`

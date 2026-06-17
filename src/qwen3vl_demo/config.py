@@ -177,6 +177,15 @@ class DistillCfg:
     # oracle: appeal → soft relevance のシグモイド温度（大きいほどラベルが平坦＝緩い）。
     # reranker teacher では未使用。
     temperature: float = 1.0
+    # student（蒸留先）の初期化元を選ぶ。蒸留先アーキを複数パターン試すための knob。
+    #   None … ベース埋め込み ``embedding.model_id`` から（自己蒸留）。
+    #   "ft" … FT 済み埋め込み成果物 ``model_dir`` から継続蒸留。
+    #   その他 … 任意の HF ID／ローカルパス（小型 cross-modal 埋め込みへ圧縮）。
+    student_model: str | None = None
+    # student の種別。"bi"（検索用 bi-encoder, 既定）/ "cross"（リランカー圧縮）。
+    student_kind: str = "bi"
+    # student を量子化ロードするか。"none"（既定）/ "8bit" / "4bit"（QLoRA, GPU 限定）。
+    quantize: str = "none"
 
 
 @dataclass
@@ -524,6 +533,24 @@ def add_distill_args(parser: argparse.ArgumentParser) -> None:
         default=_UNSET,
         help="oracle soft relevance の温度（distill.temperature）。",
     )
+    g.add_argument(
+        "--distill-student-model",
+        type=_nullable_str,
+        default=_UNSET,
+        help="student の初期化元: none=ベース / ft=FT成果物 / 任意ID・パス（distill.student_model）。",
+    )
+    g.add_argument(
+        "--distill-student-kind",
+        type=str,
+        default=_UNSET,
+        help="student の種別: bi（bi-encoder）/ cross（リランカー圧縮）（distill.student_kind）。",
+    )
+    g.add_argument(
+        "--distill-quantize",
+        type=str,
+        default=_UNSET,
+        help="student の量子化: none / 8bit / 4bit（distill.quantize）。",
+    )
 
 
 def add_train_args(parser: argparse.ArgumentParser) -> None:
@@ -607,6 +634,9 @@ def _override_targets(cfg: Config):
         "distill_model_dir": (cfg.distill, "model_dir"),
         "distill_num_negatives": (cfg.distill, "num_negatives"),
         "distill_temperature": (cfg.distill, "temperature"),
+        "distill_student_model": (cfg.distill, "student_model"),
+        "distill_student_kind": (cfg.distill, "student_kind"),
+        "distill_quantize": (cfg.distill, "quantize"),
         "epochs": (cfg.train, "epochs"),
         "batch_size": (cfg.train, "per_device_batch_size"),
         "grad_accum": (cfg.train, "gradient_accumulation_steps"),

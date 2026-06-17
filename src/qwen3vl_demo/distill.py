@@ -59,6 +59,26 @@ logger = logging.getLogger(__name__)
 
 
 # --- 純粋関数（GPU/モデル不要・単体テスト対象）------------------------------
+def _resolve_student_id(cfg: Config) -> str:
+    """student（蒸留先）の初期化元モデル ID／パスを解決する（純粋関数）。
+
+    蒸留先アーキを複数パターン試すための分岐。``distill.student_model`` に従う:
+
+    * ``None``／空 … ベース埋め込み ``cfg.embedding.model_id`` から（自己蒸留）。
+    * ``"ft"`` … FT 済み埋め込み成果物 ``cfg.model_path`` から継続蒸留する。
+    * その他 … 任意の HF ID／ローカルパスをそのまま使う（小型 cross-modal 埋め込みへ圧縮）。
+
+    Returns:
+        ``SentenceTransformer`` に渡せるモデル ID 文字列。
+    """
+    student = cfg.distill.student_model
+    if not student:  # None または空文字 → 自己蒸留
+        return cfg.embedding.model_id
+    if student == "ft":
+        return str(cfg.model_path)
+    return student
+
+
 def group_negatives(
     pairs: list[tuple[int, int, float]],
 ) -> list[tuple[int, int, list[int]]]:
@@ -234,6 +254,25 @@ def distill(cfg: Config) -> None:
             f"distill.teacher は 'reranker' か 'oracle' を指定してください: {cfg.distill.teacher!r}"
         )
 
+    # Phase 1 は bi-encoder student（量子化なし）のみ対応。cross / 量子化は今後のフェーズ。
+    if cfg.distill.student_kind != "bi":
+        raise NotImplementedError(
+            f"distill.student_kind={cfg.distill.student_kind!r} は未対応です"
+            "（現状は 'bi' のみ。cross-encoder 圧縮は今後対応予定）。"
+        )
+    if cfg.distill.quantize != "none":
+        raise NotImplementedError(
+            f"distill.quantize={cfg.distill.quantize!r} は未対応です"
+            "（現状は 'none' のみ。量子化自己蒸留(QLoRA)は今後対応予定）。"
+        )
+
+    # student='ft'（FT 継続蒸留）なのに FT 成果物が無いなら早期に失敗させる。
+    if cfg.distill.student_model == "ft" and not cfg.model_path.exists():
+        raise FileNotFoundError(
+            f"distill.student_model='ft' ですが FT 済み埋め込みが見つかりません: {cfg.model_path}"
+            "（先に train ステージを実行してください）。"
+        )
+
     if cfg.distill.teacher == "reranker" and not cfg.reranker.model_id:
         # リランカー teacher が無い（smoke 等）ので何もしない（CI でも安全にスキップ）。
         logger.info(
@@ -250,8 +289,9 @@ def distill(cfg: Config) -> None:
     # データ構築（マイニング・teacher 採点）を student のロードより先に行い、VRAM 同居を避ける。
     train_ds, loss_kind = _build_distill_dataset(cfg)
 
-    # student は **ベース埋め込み** から始める（蒸留単体の効果を測れるようにする）。
-    model = load_embedding_model(cfg)
+    # student の初期化元は distill.student_model で選べる（既定＝ベース埋め込みの自己蒸留）。
+    student_id = _resolve_student_id(cfg)
+    model = load_embedding_model(cfg, model_id=student_id)
 
     if cfg.train.gradient_checkpointing and hasattr(model, "gradient_checkpointing_enable"):
         try:
@@ -299,8 +339,8 @@ def distill(cfg: Config) -> None:
     )
 
     logger.info(
-        "%s を teacher=%s（loss=%s）で %d 件に蒸留します",
-        cfg.embedding.model_id,
+        "student=%s を teacher=%s（loss=%s）で %d 件に蒸留します",
+        student_id,
         cfg.distill.teacher,
         loss_kind,
         len(train_ds),
