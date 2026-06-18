@@ -305,10 +305,7 @@ def make_archetype_table(data_dir_label: str) -> tuple[list[str], list[list]]:
         return ["アーキタイプ"], []
     axes = model["axes"]
     headers = ["アーキタイプ"] + axes
-    rows = [
-        [arch] + [f"{v:+.1f}" for v in vec]
-        for arch, vec in model["archetypes"].items()
-    ]
+    rows = [[arch] + [f"{v:+.1f}" for v in vec] for arch, vec in model["archetypes"].items()]
     return headers, rows
 
 
@@ -671,7 +668,9 @@ def build_app() -> gr.Blocks:
                     )
 
                 # アーキタイプ定義テーブル（ペルソナ非依存・折りたたみ）
-                with gr.Accordion("📐 所与: アーキタイプ定義（嗜好空間の基底ベクトル）", open=False):
+                with gr.Accordion(
+                    "📐 所与: アーキタイプ定義（嗜好空間の基底ベクトル）", open=False
+                ):
                     gr.Markdown(
                         "6 種類のアーキタイプが嗜好空間の「型」を定義します。"
                         "各値は **+1**（好む）/ **−1**（嫌う）/ **0**（無関心）。"
@@ -690,20 +689,24 @@ def build_app() -> gr.Blocks:
                     with gr.Column(scale=1):
                         p_archetype_txt = gr.Textbox(
                             label="所与: アーキタイプ混合（凸結合の重み）",
-                            interactive=False, lines=2,
+                            interactive=False,
+                            lines=2,
                         )
                         p_calc_txt = gr.Textbox(
                             label="計算: 加重和の展開式  →  persona_pref",
-                            interactive=False, lines=7,
+                            interactive=False,
+                            lines=7,
                         )
                         p_embed_plot = gr.Plot(label="結果: 嗜好埋め込み（7軸）")
                         p_pref_txt = gr.Textbox(
                             label="変換: 嗜好テキスト（FRAGMENTS 経由、こだわり強度順）",
-                            interactive=False, lines=8,
+                            interactive=False,
+                            lines=8,
                         )
                         p_interaction_txt = gr.Textbox(
                             label="補正: 非加法的交互作用（INTERACTIONS）",
-                            interactive=False, lines=5,
+                            interactive=False,
+                            lines=5,
                         )
 
                     # 右: 画像ブラウザ
@@ -722,11 +725,16 @@ def build_app() -> gr.Blocks:
                             p_category_txt = gr.Textbox(label="カテゴリ", interactive=False)
 
                 # 左ペインの出力リスト（アーキタイプテーブルはペルソナ非依存なので別管理）
-                _p_left = [p_archetype_txt, p_calc_txt, p_embed_plot,
-                           p_pref_txt, p_interaction_txt]
+                _p_left = [p_archetype_txt, p_calc_txt, p_embed_plot, p_pref_txt, p_interaction_txt]
                 # 右ペインの出力リスト
-                _p_right = [p_img, p_anchor_txt, p_subject_txt, p_category_txt,
-                            p_idx_state, p_counter_lbl]
+                _p_right = [
+                    p_img,
+                    p_anchor_txt,
+                    p_subject_txt,
+                    p_category_txt,
+                    p_idx_state,
+                    p_counter_lbl,
+                ]
 
                 def _p_on_data_dir(data_dir_label):
                     """データディレクトリ変更時: ペルソナ選択肢・アーキタイプテーブル・全パネルを更新。"""
@@ -745,8 +753,17 @@ def build_app() -> gr.Blocks:
                     return (
                         gr.update(choices=names, value=persona),
                         gr.Dataframe(value=rows, headers=headers),
-                        arch, calc, fig, pref, inter,
-                        img, anchor, subject, cat, 0, counter,
+                        arch,
+                        calc,
+                        fig,
+                        pref,
+                        inter,
+                        img,
+                        anchor,
+                        subject,
+                        cat,
+                        0,
+                        counter,
                     )
 
                 def _p_on_persona(data_dir_label, persona):
@@ -776,19 +793,20 @@ def build_app() -> gr.Blocks:
                 _p_all_outputs = [p_persona_dd, p_arch_table] + _p_left + _p_right
                 _p_persona_outputs = _p_left + _p_right
 
-                p_data_dir_dd.change(
-                    _p_on_data_dir, inputs=p_data_dir_dd, outputs=_p_all_outputs
-                )
+                p_data_dir_dd.change(_p_on_data_dir, inputs=p_data_dir_dd, outputs=_p_all_outputs)
                 p_persona_dd.change(
-                    _p_on_persona, inputs=[p_data_dir_dd, p_persona_dd],
+                    _p_on_persona,
+                    inputs=[p_data_dir_dd, p_persona_dd],
                     outputs=_p_persona_outputs,
                 )
                 p_prev_btn.click(
-                    _p_prev, inputs=[p_data_dir_dd, p_persona_dd, p_idx_state],
+                    _p_prev,
+                    inputs=[p_data_dir_dd, p_persona_dd, p_idx_state],
                     outputs=_p_right,
                 )
                 p_next_btn.click(
-                    _p_next, inputs=[p_data_dir_dd, p_persona_dd, p_idx_state],
+                    _p_next,
+                    inputs=[p_data_dir_dd, p_persona_dd, p_idx_state],
                     outputs=_p_right,
                 )
                 demo.load(
