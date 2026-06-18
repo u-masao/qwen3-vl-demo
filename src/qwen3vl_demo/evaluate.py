@@ -72,6 +72,7 @@ def build_ir_evaluator(cfg: Config, name: str = EVALUATOR_NAME):
         corpus=corpus,
         relevant_docs=relevant_docs,
         name=name,
+        query_prompt_name=cfg.embedding.query_prompt_name,
         show_progress_bar=False,
         write_csv=False,
     )

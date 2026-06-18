@@ -43,7 +43,7 @@ from .config import (
     add_train_args,
     config_from_args,
 )
-from .evaluate import build_ir_evaluator
+from .evaluate import EVALUATOR_NAME, build_ir_evaluator
 from .models import load_embedding_model
 from .preference import fragments_to_attributes, load_model, relevance_score
 from .tracking import (
@@ -319,7 +319,10 @@ def distill(cfg: Config) -> None:
         eval_steps=cfg.train.eval_steps,
         save_strategy="steps",
         save_steps=cfg.train.save_steps,
-        save_total_limit=1,
+        save_total_limit=2,
+        load_best_model_at_end=True,
+        metric_for_best_model=f"{EVALUATOR_NAME}_cosine_ndcg@10",
+        greater_is_better=True,
         logging_steps=cfg.train.logging_steps,
         report_to=[],
         seed=cfg.seed,
