@@ -158,6 +158,37 @@ class TrainCfg:
 
 
 @dataclass
+class DistillCfg:
+    """知識蒸留（teacher → student 埋め込み）の設定（YAML の ``distill`` セクション）。
+
+    student は常に埋め込み bi-encoder。teacher を 2 つから選べる:
+
+    * ``reranker`` … FT 済みリランカー（cross-encoder）のスコアを teacher に、(query, pos,
+      neg) のマージンを **MarginMSELoss** で蒸留する（パターン A: cross→bi）。
+      ``reranker.model_id`` が null（smoke 等）のときはスキップする。
+    * ``oracle`` … 嗖好モデル（``preference.py``＝正解の作り手）の連続 appeal を soft
+      relevance に変換し、**CoSENTLoss** で蒸留する（パターン B）。teacher 推論コスト 0 で、
+      埋め込みと preference_model.json だけで動くため CPU/smoke でも回せる。
+    """
+
+    teacher: str = "reranker"  # "reranker"（パターン A）/ "oracle"（パターン B）
+    model_dir: str = "outputs/model_distilled"  # 蒸留済み student 埋め込みの保存先
+    num_negatives: int = 3  # 1 クエリあたりの負例数（蒸留ペアの構築に使う）
+    # oracle: appeal → soft relevance のシグモイド温度（大きいほどラベルが平坦＝緩い）。
+    # reranker teacher では未使用。
+    temperature: float = 1.0
+    # student（蒸留先）の初期化元を選ぶ。蒸留先アーキを複数パターン試すための knob。
+    #   None … ベース埋め込み ``embedding.model_id`` から（自己蒸留）。
+    #   "ft" … FT 済み埋め込み成果物 ``model_dir`` から継続蒸留。
+    #   その他 … 任意の HF ID／ローカルパス（小型 cross-modal 埋め込みへ圧縮）。
+    student_model: str | None = None
+    # student の種別。"bi"（検索用 bi-encoder, 既定）/ "cross"（リランカー圧縮）。
+    student_kind: str = "bi"
+    # student を量子化ロードするか。"none"（既定）/ "8bit" / "4bit"（QLoRA, GPU 限定）。
+    quantize: str = "none"
+
+
+@dataclass
 class Config:
     """全設定を束ねるトップレベルの設定オブジェクト。"""
 
@@ -172,6 +203,7 @@ class Config:
     embedding: EmbeddingCfg = field(default_factory=EmbeddingCfg)
     reranker: RerankerCfg = field(default_factory=RerankerCfg)
     train: TrainCfg = field(default_factory=TrainCfg)
+    distill: DistillCfg = field(default_factory=DistillCfg)
 
     # --- パスを絶対パスへ解決するアクセサ群 -----------------------------------
     def _abs(self, p: str) -> Path:
@@ -203,6 +235,11 @@ class Config:
     def reranker_model_path(self) -> Path:
         """ファインチューニング済みリランカー保存先の絶対パス。"""
         return self._abs(self.reranker.model_dir)
+
+    @property
+    def distill_model_path(self) -> Path:
+        """蒸留済み student 埋め込み保存先の絶対パス。"""
+        return self._abs(self.distill.model_dir)
 
     @property
     def is_smoke(self) -> bool:
@@ -242,6 +279,7 @@ def load_config(path: str | Path) -> Config:
         embedding=_build(EmbeddingCfg, raw.get("embedding")),
         reranker=_build(RerankerCfg, raw.get("reranker")),
         train=_build(TrainCfg, raw.get("train")),
+        distill=_build(DistillCfg, raw.get("distill")),
     )
 
 
@@ -468,6 +506,53 @@ def add_reranker_args(parser: argparse.ArgumentParser) -> None:
     )
 
 
+def add_distill_args(parser: argparse.ArgumentParser) -> None:
+    """``distill`` セクションのオーバーライド引数（知識蒸留）。"""
+    g = parser.add_argument_group("distill overrides")
+    g.add_argument(
+        "--distill-teacher",
+        type=str,
+        default=_UNSET,
+        help="蒸留の teacher: reranker（パターン A）/ oracle（パターン B）（distill.teacher）。",
+    )
+    g.add_argument(
+        "--distill-model-dir",
+        type=str,
+        default=_UNSET,
+        help="蒸留済み student 埋め込みの保存先（distill.model_dir）。",
+    )
+    g.add_argument(
+        "--distill-num-negatives",
+        type=int,
+        default=_UNSET,
+        help="蒸留ペアの 1 クエリあたり負例数（distill.num_negatives）。",
+    )
+    g.add_argument(
+        "--distill-temperature",
+        type=float,
+        default=_UNSET,
+        help="oracle soft relevance の温度（distill.temperature）。",
+    )
+    g.add_argument(
+        "--distill-student-model",
+        type=_nullable_str,
+        default=_UNSET,
+        help="student の初期化元: none=ベース / ft=FT成果物 / 任意ID・パス（distill.student_model）。",
+    )
+    g.add_argument(
+        "--distill-student-kind",
+        type=str,
+        default=_UNSET,
+        help="student の種別: bi（bi-encoder）/ cross（リランカー圧縮）（distill.student_kind）。",
+    )
+    g.add_argument(
+        "--distill-quantize",
+        type=str,
+        default=_UNSET,
+        help="student の量子化: none / 8bit / 4bit（distill.quantize）。",
+    )
+
+
 def add_train_args(parser: argparse.ArgumentParser) -> None:
     """``train`` セクションのオーバーライド引数。"""
     g = parser.add_argument_group("train overrides")
@@ -545,6 +630,13 @@ def _override_targets(cfg: Config):
         "reranker_dir": (cfg.reranker, "model_dir"),
         "num_negatives": (cfg.reranker, "num_negatives"),
         "reranker_max_pixels": (cfg.reranker, "max_pixels"),
+        "distill_teacher": (cfg.distill, "teacher"),
+        "distill_model_dir": (cfg.distill, "model_dir"),
+        "distill_num_negatives": (cfg.distill, "num_negatives"),
+        "distill_temperature": (cfg.distill, "temperature"),
+        "distill_student_model": (cfg.distill, "student_model"),
+        "distill_student_kind": (cfg.distill, "student_kind"),
+        "distill_quantize": (cfg.distill, "quantize"),
         "epochs": (cfg.train, "epochs"),
         "batch_size": (cfg.train, "per_device_batch_size"),
         "grad_accum": (cfg.train, "gradient_accumulation_steps"),

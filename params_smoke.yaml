@@ -61,5 +61,23 @@ train:
   warmup_ratio: 0.0
   gradient_checkpointing: false
   eval_steps: 5
-  save_steps: 100
+  save_steps: 10000
   logging_steps: 1
+
+distill:
+  # smoke はリランカーが null なので teacher=oracle（嗖好モデル＝モデル不要）で配線検証する。
+  teacher: oracle
+  model_dir: outputs_smoke/model_distilled
+  num_negatives: 2
+  temperature: 1.0
+
+# 蒸留先 student のマトリクス（dvc.yaml の distill@<name> / eval_distill@<name> が読む）。
+# smoke は配線確認用に self（自己蒸留）1 件のみ・teacher=oracle（モデル不要）。
+# 注: smoke は基本 `make smoke`（各ステージ直接実行）で検証する方針だが、`make use-smoke`
+# 後に dvc が dvc.yaml を解決できるようキーは定義しておく。
+distill_variants:
+  self:
+    teacher: oracle
+    student_model: none
+    student_kind: bi
+    quantize: none

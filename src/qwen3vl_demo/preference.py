@@ -286,6 +286,38 @@ def attributes_to_fragments(model: PreferenceModel, attrs: list[int]) -> list[st
     return [model.fragments[ax][attrs[i]] for i, ax in enumerate(model.axes)]
 
 
+def fragments_to_attributes(model: PreferenceModel, text: str) -> list[int]:
+    """プロンプト文 ``text`` から潜在属性ベクトルを復元する（``attributes_to_fragments`` の逆）。
+
+    ``build_captions_preference`` が作る文は ``"a photo of a {subj}, " + ", ".join(fragments)``
+    で、各軸の語片（``model.fragments[ax][0|1]``）がちょうど 1 つ含まれる。軸ごとに
+    2 つの語片のどちらが部分文字列として現れるかで属性値（0/1）を判定する。
+
+    データセットには属性ベクトルを保存していないため、oracle 蒸留（``distill.py``）が
+    各画像の soft relevance を計算する際にここで復元する。語片の集合が変わって
+    どちらの語片も見つからない／両方見つかる場合は、形式の崩れとして ``ValueError`` にする。
+
+    Args:
+        model: 語片マップ（``fragments``）を持つ嗖好モデル。
+        text: ``build_captions_preference`` が生成したプロンプト文。
+
+    Returns:
+        軸順（``model.axes``）の二値属性ベクトル。
+
+    Raises:
+        ValueError: いずれかの軸で語片が一意に判定できなかった場合。
+    """
+    attrs: list[int] = []
+    for ax in model.axes:
+        frag0, frag1 = model.fragments[ax]
+        has0 = frag0 in text
+        has1 = frag1 in text
+        if has0 == has1:  # 両方ある or 両方ない＝一意に決まらない
+            raise ValueError(f"軸 {ax!r} の語片を text から一意に復元できませんでした: {text!r}")
+        attrs.append(1 if has1 else 0)
+    return attrs
+
+
 def persona_preferred_fragments(
     model: PreferenceModel, persona: str, top_k: int | None = None
 ) -> list[str]:

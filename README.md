@@ -117,11 +117,56 @@ This runs the following in order (each can also be run individually):
 | `make eval`            | fine-tuned retrieval quality → `outputs/metrics_finetuned.json` |
 | `make train-reranker`  | fine-tune the reranker → `outputs/reranker/` |
 | `make rerank`          | **6-way evaluation** (embedding {base,ft} × reranker {base,ft,none}) → `outputs/rerank_metrics.json` + examples |
+| `make distill`         | **knowledge distillation** (teacher → student embedding) → `outputs/model_distilled/` |
+| `make eval-distill`    | distilled retrieval quality → `outputs/metrics_distilled.json` |
 
 Afterwards, compare `metrics_base.json` vs `metrics_finetuned.json` (embedding
 only), and `rerank_metrics.json` for the six two-stage combinations
 (embedding {base,ft} × reranker {base,ft,none}, where `none` is the
 embedding-only reference) — NDCG / Recall / MRR.
+
+### Knowledge distillation (teacher → student embedding)
+
+`make distill` transfers the knowledge of a smart-but-slow/expensive **teacher**
+into the fast inner-product **student embedding (bi-encoder)** — measuring how
+much of the second stage's (reranker) or oracle structure's intelligence can be
+pushed down into the fast first-stage retriever. Pick the teacher via
+`distill.teacher`:
+
+| teacher | what | loss | notes |
+|---|---|---|---|
+| `reranker` (default, pattern A) | FT reranker (cross-encoder) scores; student's similarity gap reproduces the teacher margin `s_pos - s_neg` per query | `MarginMSELoss` | distills the non-additive interactions (the reranker's headroom) into a bi-encoder. Skipped when `reranker.model_id` is null (smoke) |
+| `oracle` (pattern B) | preference model (`preference.py`, the label oracle) continuous appeal as soft (persona, image) relevance | `CoSENTLoss` | zero teacher-inference cost (no model). Runs on CPU even with CLIP, so it's exercised in smoke |
+
+Negatives come from the same hard-negative mining as `train_reranker`. By
+default the student is trained **from the base embedding** (self-distillation) so
+the distilled metrics line up against `metrics_base` / `metrics_finetuned`.
+
+#### Trying several student architectures (`distill_variants`)
+
+The distillation **target (student)** is configurable so you can try several
+patterns. Each variant is one entry under `distill_variants` in `params.yaml`,
+and DVC expands them into **independent, individually-cached** stages
+`distill@<name>` / `eval_distill@<name>` (output dir `outputs/distill_<name>`,
+metrics `metrics_distill_<name>.json`). Add a pattern by adding one entry — DVC
+caches per variant, so editing one variant re-runs only that stage and leaves the
+others cached (cheap to iterate).
+
+| field | values | meaning |
+|---|---|---|
+| `teacher` | `reranker` / `oracle` | which teacher (pattern A / B above) |
+| `student_model` | `none` / `ft` / any HF id or path | init source: `none`=base embedding (self-distill), `ft`=continue from the fine-tuned embedding, otherwise compress into a small cross-modal embedding |
+| `student_kind` | `bi` (supported) / `cross` (planned) | bi-encoder retriever vs. reranker (cross-encoder) compression |
+| `quantize` | `none` (supported) / `8bit` / `4bit` (planned) | quantized self-distillation (QLoRA, GPU-only) |
+
+> Note: a `bi` student must map query **text** and document **image** into the
+> same space, so `student_model` must be a *cross-modal* embedding. Because small
+> multimodal embeddings are scarce, quantization (shrinking the same arch) is the
+> most practical "small student" route — `student_kind: cross` and `quantize:
+> {8bit,4bit}` are planned in later phases and currently raise a clear error.
+
+Override individual fields for a one-off run with `--distill-student-model` /
+`--distill-student-kind` / `--distill-quantize` / `--distill-teacher`.
 
 ### Visualize the results (Gradio)
 
@@ -190,6 +235,8 @@ the values it uses, a change re-runs just the stages that consume that value:
 | `train.*` (epochs, lr, batch…) | `train`, `train_reranker` → `eval`, `rerank` | `generate_data`, `eval_base` |
 | `embedding.*` (model_id, max_pixels, attn…) | `eval_base`, `train`, `eval`, `train_reranker`, `rerank` | `generate_data` |
 | `reranker.*` (model_id, top_k, negatives…) | `train_reranker`, `rerank` | `generate_data`, `eval_base`, `train`, `eval` |
+| `distill.*` (num_negatives, temperature…) | every `distill@*`, `eval_distill@*` | everything else |
+| `distill_variants.<name>.*` | only `distill@<name>`, `eval_distill@<name>` | the other variants stay cached |
 | `common.seed/device/dtype`, `common.paths.*` | the stages that pass that value | stages that don't |
 
 For a one-off run with a different value, pass the matching CLI override to any
@@ -301,7 +348,8 @@ qwen3-vl-demo/
 │   ├── evaluate.py        # InformationRetrievalEvaluator → NDCG/Recall
 │   ├── train.py           # fine-tune embeddings with MultipleNegativesRankingLoss
 │   ├── train_reranker.py  # fine-tune the reranker (negative mining + BCE)
-│   └── rerank.py          # embedding retrieval top-k → reranker
+│   ├── rerank.py          # embedding retrieval top-k → reranker
+│   └── distill.py         # knowledge distillation: teacher (reranker / oracle) → student embedding
 ├── app.py                 # Gradio results viewer
 ├── tests/                 # pure-Python unit tests (pytest)
 ├── params.yaml            # active profile (copied from params_<profile>.yaml)
