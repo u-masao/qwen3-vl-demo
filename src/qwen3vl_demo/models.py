@@ -91,7 +91,9 @@ def load_embedding_model(cfg: Config, model_id: str | None = None):
         if not processor_kwargs:
             raise
         logger.warning(
-            "  processor_kwargs=%s が使えません（%s）。これを外して再試行します", processor_kwargs, exc
+            "  processor_kwargs=%s が使えません（%s）。これを外して再試行します",
+            processor_kwargs,
+            exc,
         )
         model, used = _load({})
 

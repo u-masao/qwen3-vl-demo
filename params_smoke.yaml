@@ -61,7 +61,7 @@ train:
   warmup_ratio: 0.0
   gradient_checkpointing: false
   eval_steps: 5
-  save_steps: 100
+  save_steps: 10000
   logging_steps: 1
 
 distill:
