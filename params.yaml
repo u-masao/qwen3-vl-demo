@@ -84,7 +84,7 @@ distill:
   #   teacher=oracle   … パターン B（嗖好モデルの soft label, CoSENT）。teacher はモデル不要。
   teacher: reranker
   model_dir: outputs/model_distilled   # 蒸留済み student 埋め込みの保存先
-  num_negatives: 3                     # 蒸留ペアの 1 クエリあたり負例数
+  num_negatives: 15                    # 蒸留ペアの 1 クエリあたり負例数（Issue #25: 3→15 に増強）
   temperature: 1.0                     # oracle soft relevance の温度（reranker では未使用）
 
 # 蒸留先（student）を複数パターン試すためのマトリクス。dvc.yaml の distill@<name> /
