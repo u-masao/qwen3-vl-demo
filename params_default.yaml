@@ -53,7 +53,7 @@ embedding:
   attn_implementation: flash_attention_2   # falls back to sdpa if unavailable
   # Cap image tokens to keep VRAM in check on a 16GB card.
   max_pixels: 200704              # 512*392 ~= keep patches modest; tune as needed
-  query_prompt_name: query        # Qwen3-VL embedding uses instruction prompts
+  query_prompt_name: default      # "default" prompt = "Represent the user's input." で全モデル一貫（Issue #20）
 
 reranker:
   model_id: Qwen/Qwen3-VL-Reranker-2B
@@ -106,9 +106,13 @@ distill_variants:
     student_model: ft
     student_kind: bi
     quantize: none
-  # ③小型 cross-modal 埋め込みへ圧縮する例（必要なら有効化）:
-  # clip_small:
-  #   teacher: reranker
-  #   student_model: sentence-transformers/clip-ViT-B-32
-  #   student_kind: bi
-  #   quantize: none
+  oracle_base:        # ③oracle 蒸留: 嗜好モデルの soft label から（teacher モデル不要・VRAM 問題なし）
+    teacher: oracle
+    student_model: none
+    student_kind: bi
+    quantize: none
+  oracle_ft:          # ④oracle 蒸留: FT 済み埋め込みを起点に（teacher モデル不要）
+    teacher: oracle
+    student_model: ft
+    student_kind: bi
+    quantize: none
