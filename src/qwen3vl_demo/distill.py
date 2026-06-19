@@ -187,8 +187,19 @@ def _teacher_reranker_scores(
         ce_kwargs["processor_kwargs"] = {"max_pixels": cfg.reranker.max_pixels}
     reranker = CrossEncoder(reranker_id, **ce_kwargs)
 
-    inputs = [[personas[q], images[doc]] for q, doc in needed]
-    raw = reranker.predict(inputs, show_progress_bar=False)
+    # 8000件規模ではVRAMがWSL2共有メモリへ退避しOOMになるため、チャンク単位で採点し
+    # バッチ間でCUDAキャッシュを解放する（Issue #25）。
+    _SCORE_CHUNK = 256
+    raw_scores: list[float] = []
+    for start in range(0, len(needed), _SCORE_CHUNK):
+        chunk = [[personas[q], images[doc]] for q, doc in needed[start : start + _SCORE_CHUNK]]
+        scores = reranker.predict(chunk, show_progress_bar=False)
+        raw_scores.extend(float(s) for s in scores)
+        if cfg.device != "cpu":
+            import torch
+
+            torch.cuda.empty_cache()
+    raw = raw_scores
     _free_model(reranker)
 
     return {pair: float(score) for pair, score in zip(needed, raw, strict=True)}
