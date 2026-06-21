@@ -914,7 +914,7 @@ stages:
       200704 --query-prompt-name default --reranker-model Qwen/Qwen3-VL-Reranker-2B
       --reranker-dir outputs/reranker --reranker-max-pixels 100352 --distill-teacher
       reranker --distill-student-model none --distill-student-kind bi --distill-quantize
-      none --distill-model-dir outputs/distill_self --distill-num-negatives 3 --distill-temperature
+      none --distill-model-dir outputs/distill_self --distill-num-negatives 7 --distill-temperature
       1.0 --epochs 1 --batch-size 2 --grad-accum 1 --lr 2e-05 --warmup-ratio 0.1 --gradient-checkpointing
       true --eval-steps 50 --save-steps 10000 --logging-steps 10\n"
     deps:
@@ -940,8 +940,8 @@ stages:
       nfiles: 18
     - path: src/qwen3vl_demo/distill.py
       hash: md5
-      md5: 8f297b1223f2a5cf45ae2379978bf074
-      size: 16766
+      md5: 568c4ca8ae3bf56bd88b51eca75fd720
+      size: 17272
     - path: src/qwen3vl_demo/evaluate.py
       hash: md5
       md5: 1daf4ab9b34e02f830a57557fde3870b
@@ -961,8 +961,8 @@ stages:
     outs:
     - path: outputs/distill_self
       hash: md5
-      md5: 463a926651ad1dcc3ac2fedd7b5f0318.dir
-      size: 4266724553
+      md5: 99f184570d55f771f8de7f08ddacf40e.dir
+      size: 4266733195
       nfiles: 17
   distill@ft_continue:
     cmd: "uv run python -m qwen3vl_demo.distill --profile default --seed 42 --device
@@ -972,7 +972,7 @@ stages:
       --reranker-dir outputs/reranker --reranker-max-pixels 100352 --distill-teacher
       reranker --distill-student-model ft --distill-student-kind bi --distill-quantize
       none --distill-model-dir outputs/distill_ft_continue --distill-num-negatives
-      3 --distill-temperature 1.0 --epochs 1 --batch-size 2 --grad-accum 1 --lr 2e-05
+      7 --distill-temperature 1.0 --epochs 1 --batch-size 2 --grad-accum 1 --lr 2e-05
       --warmup-ratio 0.1 --gradient-checkpointing true --eval-steps 50 --save-steps
       10000 --logging-steps 10\n"
     deps:
@@ -998,8 +998,8 @@ stages:
       nfiles: 18
     - path: src/qwen3vl_demo/distill.py
       hash: md5
-      md5: 8f297b1223f2a5cf45ae2379978bf074
-      size: 16766
+      md5: 568c4ca8ae3bf56bd88b51eca75fd720
+      size: 17272
     - path: src/qwen3vl_demo/evaluate.py
       hash: md5
       md5: 1daf4ab9b34e02f830a57557fde3870b
@@ -1019,8 +1019,8 @@ stages:
     outs:
     - path: outputs/distill_ft_continue
       hash: md5
-      md5: c6811d5daebab2116bd1b04d98a18849.dir
-      size: 4266724391
+      md5: d01a47721c07bc6e2dfc510f4d64cd66.dir
+      size: 4266732753
       nfiles: 17
   eval_distill@self:
     cmd: "uv run python -m qwen3vl_demo.evaluate --profile default --seed 42 --data-dir
@@ -1035,8 +1035,8 @@ stages:
       nfiles: 3
     - path: outputs/distill_self
       hash: md5
-      md5: 463a926651ad1dcc3ac2fedd7b5f0318.dir
-      size: 4266724553
+      md5: 99f184570d55f771f8de7f08ddacf40e.dir
+      size: 4266733195
       nfiles: 17
     - path: src/qwen3vl_demo/evaluate.py
       hash: md5
@@ -1053,8 +1053,8 @@ stages:
     outs:
     - path: outputs/metrics_distill_self.json
       hash: md5
-      md5: 8d1040a062a44972f009e3a3dabe8fc2
-      size: 958
+      md5: a9a2fda3e57f7a072806ab38f074c2d9
+      size: 951
   eval_distill@ft_continue:
     cmd: "uv run python -m qwen3vl_demo.evaluate --profile default --seed 42 --data-dir
       data --output-dir outputs --embedding-model Qwen/Qwen3-VL-Embedding-2B --attn-impl
@@ -1068,8 +1068,8 @@ stages:
       nfiles: 3
     - path: outputs/distill_ft_continue
       hash: md5
-      md5: c6811d5daebab2116bd1b04d98a18849.dir
-      size: 4266724391
+      md5: d01a47721c07bc6e2dfc510f4d64cd66.dir
+      size: 4266732753
       nfiles: 17
     - path: src/qwen3vl_demo/evaluate.py
       hash: md5
@@ -1086,8 +1086,8 @@ stages:
     outs:
     - path: outputs/metrics_distill_ft_continue.json
       hash: md5
-      md5: c02a3de964cd5035a3e318626301b1e2
-      size: 881
+      md5: f6b5c53d5288e8c2d4009c60bd60ad3b
+      size: 871
   distill@oracle_base:
     cmd: "uv run python -m qwen3vl_demo.distill --profile default --seed 42 --device
       cuda --dtype bfloat16 --data-dir data --output-dir outputs --model-dir outputs/model
@@ -1096,7 +1096,7 @@ stages:
       --reranker-dir outputs/reranker --reranker-max-pixels 100352 --distill-teacher
       oracle --distill-student-model none --distill-student-kind bi --distill-quantize
       none --distill-model-dir outputs/distill_oracle_base --distill-num-negatives
-      3 --distill-temperature 1.0 --epochs 1 --batch-size 2 --grad-accum 1 --lr 2e-05
+      7 --distill-temperature 1.0 --epochs 1 --batch-size 2 --grad-accum 1 --lr 2e-05
       --warmup-ratio 0.1 --gradient-checkpointing true --eval-steps 50 --save-steps
       10000 --logging-steps 10\n"
     deps:
@@ -1122,8 +1122,8 @@ stages:
       nfiles: 18
     - path: src/qwen3vl_demo/distill.py
       hash: md5
-      md5: 8f297b1223f2a5cf45ae2379978bf074
-      size: 16766
+      md5: 568c4ca8ae3bf56bd88b51eca75fd720
+      size: 17272
     - path: src/qwen3vl_demo/evaluate.py
       hash: md5
       md5: 1daf4ab9b34e02f830a57557fde3870b
@@ -1143,8 +1143,8 @@ stages:
     outs:
     - path: outputs/distill_oracle_base
       hash: md5
-      md5: 14c2d1d2d0c41310364474c1aa9f2518.dir
-      size: 4266648489
+      md5: 9c59ad1579336a57c4ee78ba436721a6.dir
+      size: 4266656719
       nfiles: 14
   distill@oracle_ft:
     cmd: "uv run python -m qwen3vl_demo.distill --profile default --seed 42 --device
@@ -1153,7 +1153,7 @@ stages:
       200704 --query-prompt-name default --reranker-model Qwen/Qwen3-VL-Reranker-2B
       --reranker-dir outputs/reranker --reranker-max-pixels 100352 --distill-teacher
       oracle --distill-student-model ft --distill-student-kind bi --distill-quantize
-      none --distill-model-dir outputs/distill_oracle_ft --distill-num-negatives 3
+      none --distill-model-dir outputs/distill_oracle_ft --distill-num-negatives 7
       --distill-temperature 1.0 --epochs 1 --batch-size 2 --grad-accum 1 --lr 2e-05
       --warmup-ratio 0.1 --gradient-checkpointing true --eval-steps 50 --save-steps
       10000 --logging-steps 10\n"
@@ -1180,8 +1180,8 @@ stages:
       nfiles: 18
     - path: src/qwen3vl_demo/distill.py
       hash: md5
-      md5: 8f297b1223f2a5cf45ae2379978bf074
-      size: 16766
+      md5: 568c4ca8ae3bf56bd88b51eca75fd720
+      size: 17272
     - path: src/qwen3vl_demo/evaluate.py
       hash: md5
       md5: 1daf4ab9b34e02f830a57557fde3870b
@@ -1201,8 +1201,8 @@ stages:
     outs:
     - path: outputs/distill_oracle_ft
       hash: md5
-      md5: 9d05bcfeea8330c03a47870968af8de8.dir
-      size: 4266648281
+      md5: 7f393d765b5fe19dafc530196c176145.dir
+      size: 4266656648
       nfiles: 14
   eval_distill@oracle_base:
     cmd: "uv run python -m qwen3vl_demo.evaluate --profile default --seed 42 --data-dir
@@ -1217,8 +1217,8 @@ stages:
       nfiles: 3
     - path: outputs/distill_oracle_base
       hash: md5
-      md5: 14c2d1d2d0c41310364474c1aa9f2518.dir
-      size: 4266648489
+      md5: 9c59ad1579336a57c4ee78ba436721a6.dir
+      size: 4266656719
       nfiles: 14
     - path: src/qwen3vl_demo/evaluate.py
       hash: md5
@@ -1235,8 +1235,8 @@ stages:
     outs:
     - path: outputs/metrics_distill_oracle_base.json
       hash: md5
-      md5: 18515bc0fcf13ec2c2bb562e9d29dd36
-      size: 907
+      md5: b7273a6a45cab5bec070c3757ec10287
+      size: 895
   eval_distill@oracle_ft:
     cmd: "uv run python -m qwen3vl_demo.evaluate --profile default --seed 42 --data-dir
       data --output-dir outputs --embedding-model Qwen/Qwen3-VL-Embedding-2B --attn-impl
@@ -1250,8 +1250,8 @@ stages:
       nfiles: 3
     - path: outputs/distill_oracle_ft
       hash: md5
-      md5: 9d05bcfeea8330c03a47870968af8de8.dir
-      size: 4266648281
+      md5: 7f393d765b5fe19dafc530196c176145.dir
+      size: 4266656648
       nfiles: 14
     - path: src/qwen3vl_demo/evaluate.py
       hash: md5
@@ -1268,5 +1268,5 @@ stages:
     outs:
     - path: outputs/metrics_distill_oracle_ft.json
       hash: md5
-      md5: 1a12356253f86dfcb49f44e32609c4d4
-      size: 886
+      md5: f1784fc3245f3bd3cadf2c3c224fe543
+      size: 875
