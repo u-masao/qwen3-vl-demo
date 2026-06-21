@@ -411,6 +411,32 @@ legacy subject task, where reranking only hurt (the `gamma=0` additive ablation
 reproduces that: reranker ΔMRR ≈ −0.005). Reranking a broken *base*-embedding
 retrieval still can't help (top rows): the reranker needs a sane candidate set.
 
+### Knowledge distillation — can the bi-encoder absorb the teacher?
+
+Distillation pushes a teacher's intelligence into the fast bi-encoder student and
+asks how much survives. Four variants — teacher {`reranker`, `oracle`} × student
+init {base, fine-tuned} — measured in a distillation-focused run
+(Issue #25, `num_negatives=7`). The base / fine-tuned reference rows come from that
+same run, so the fine-tuned numbers differ slightly from the table above (run-to-run
+training variance). Full analysis:
+[docs/experiments/experiment_report_distillation_issue25.md](docs/experiments/experiment_report_distillation_issue25.md).
+
+| Student | MRR@10 | NDCG@10 | Recall@10 |
+|---|---|---|---|
+| Base (reference) | 0.273 | 0.133 | 0.035 |
+| Fine-tuned (reference) | 0.810 | 0.579 | 0.175 |
+| Distilled — `oracle_ft` (oracle teacher, FT init) | **0.810** | 0.568 | 0.165 |
+| Distilled — `ft_continue` (reranker teacher, FT init) | 0.697 | **0.606** | 0.185 |
+| Distilled — `oracle_base` (oracle teacher, base init) | 0.323 | 0.198 | 0.070 |
+| Distilled — `self` (reranker teacher, base init) | 0.360 | 0.154 | 0.047 |
+
+Takeaway: distilling the **oracle into a fine-tuned student (`oracle_ft`) matches the
+fine-tuned embedder's MRR (0.810)** — with **no teacher model at inference and no
+extra VRAM** (the oracle is the label-generating preference model, not a network).
+Starting from the *base* embedding (`self` / `oracle_base`) barely moves: a coarse
+embedding space can't absorb many hard negatives. The practical recipe is therefore
+**fine-tune first, then distill the oracle**.
+
 ---
 
 ## License

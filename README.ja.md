@@ -331,7 +331,7 @@ qwen3-vl-demo/
 │   ├── train.py           # MultipleNegativesRankingLoss で埋め込みを FT
 │   ├── train_reranker.py  # 負例マイニング＋BCE でリランカーを FT
 │   ├── rerank.py          # 埋め込み検索 top-k → Reranker で再ランク
-│   └── distill.py         # 知識蒸留: teacher（リランカー / 嗖好モデル）→ student 埋め込み
+│   └── distill.py         # 知識蒸留: teacher（リランカー / 嗜好モデル）→ student 埋め込み
 ├── app.py                 # Gradio 結果ビューア
 ├── tests/                 # 純 Python の単体テスト（pytest）
 ├── params.yaml            # 有効プロファイル（params_<profile>.yaml をコピー）
@@ -390,6 +390,29 @@ preference タスクの非加法構造の成果で、リランクが悪化する
 *逆*です（`gamma=0` の加法的 ablation はそれを再現し、リランカ ΔMRR ≈ −0.005）。
 壊滅的な*ベース*埋め込みの検索結果はリランクしても救えません（上 3 行）——リランカは
 まともな候補集合を前提に効きます。
+
+### 知識蒸留 — bi-encoder は teacher を吸収できるか
+
+蒸留は teacher の知性を高速な bi-encoder（student）へ押し込み、どれだけ残るかを測ります。
+teacher {`reranker`, `oracle`} × student 初期値 {ベース, FT} の 4 variant を、蒸留に絞った
+実行（Issue #25, `num_negatives=7`）で測定しました。base / finetuned の参照行は同じ実行の値なので、
+上の表とは finetuned の数値がわずかに異なります（学習の run 間ばらつき）。詳細分析は
+[docs/experiments/experiment_report_distillation_issue25.md](docs/experiments/experiment_report_distillation_issue25.md)。
+
+| Student | MRR@10 | NDCG@10 | Recall@10 |
+|---|---|---|---|
+| ベース（参照） | 0.273 | 0.133 | 0.035 |
+| ファインチューニング後（参照） | 0.810 | 0.579 | 0.175 |
+| 蒸留 — `oracle_ft`（oracle teacher・FT 起点） | **0.810** | 0.568 | 0.165 |
+| 蒸留 — `ft_continue`（reranker teacher・FT 起点） | 0.697 | **0.606** | 0.185 |
+| 蒸留 — `oracle_base`（oracle teacher・ベース起点） | 0.323 | 0.198 | 0.070 |
+| 蒸留 — `self`（reranker teacher・ベース起点） | 0.360 | 0.154 | 0.047 |
+
+要点: **oracle を FT 済み student に蒸留した `oracle_ft` は、FT 埋め込みの MRR（0.810）に並びます**
+——しかも **推論時に teacher モデルが不要・追加 VRAM ゼロ**（oracle は正解ラベルの作り手である嗜好
+モデルであってネットワークではない）。*ベース*埋め込みから始める（`self` / `oracle_base`）とほとんど
+動きません（粗い埋め込み空間は多数のハードネガティブを吸収できない）。よって実践的なレシピは
+**まず FT、その後 oracle を蒸留する**です。
 
 ---
 

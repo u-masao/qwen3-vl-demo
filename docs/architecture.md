@@ -8,9 +8,11 @@
 
 ## 1. 全体像
 
-パーソナライズ画像検索を合成データだけで学習させる一連の流れを 6 ステージに分割しています。
-各ステージは独立した Python モジュールで、CLI（`python -m qwen3vl_demo.<module>`）として
-単体実行できます。これらを **Makefile**（手軽に実行）または **DVC**（依存追跡つき再現実行）で束ねます。
+パーソナライズ画像検索を合成データだけで学習させる一連の流れを 8 ステージに分割しています
+（①生成 → ②ベース評価 → ③埋め込み FT → ④FT 後評価 → ⑤リランカー FT → ⑥リランク 6 パターン評価
+→ ⑦知識蒸留 → ⑧蒸留後評価）。各ステージは独立した Python モジュールで、CLI
+（`python -m qwen3vl_demo.<module>`）として単体実行できます。これらを **Makefile**（手軽に実行）
+または **DVC**（依存追跡つき再現実行）で束ねます。
 
 ```mermaid
 flowchart TD
@@ -39,7 +41,19 @@ flowchart TD
 
     ds --> rerank
     rerank -->|"rerank_metrics.json\nrerank_examples.json"| app["app.py\n(Gradio ビューア)"]
+
+    ds --> distill["⑦ distill.py\n知識蒸留 (teacher→student)"]
+    train_emb -->|"outputs/model (student 初期値 / teacher 候補)"| distill
+    train_rr -->|"outputs/reranker (teacher=reranker)"| distill
+    distill -->|"outputs/model_distilled"| eval_distill["⑧ evaluate.py\n蒸留後評価"]
+    eval_distill -->|"metrics_distilled.json"| app
 ```
+
+> ⑦ 知識蒸留の teacher は `reranker`（FT 済みリランカー＝cross-encoder）または `oracle`
+> （`preference.py` の嗜好モデル＝モデル不要）から選びます。`oracle` のときは ⑤/⑥ の成果物は
+> 不要です。DVC では複数の蒸留先（`distill_variants`）を `foreach` で展開し、variant ごとに
+> 独立キャッシュした `distill@<name>` / `eval_distill@<name>` ステージとして回します（詳細は
+> [動作解説](how-it-works.md) のステージ 5・[仕様](specification.md) の設定表を参照）。
 
 ---
 
@@ -57,6 +71,7 @@ flowchart TD
 | `train.py` | MNRL で埋め込みモデルをファインチューニング | `data/train`, `Config` | `outputs/model` |
 | `train_reranker.py` | Hard Negative Mining＋BCE でリランカーをファインチューニング | `data/train`, `Config` | `outputs/reranker` |
 | `rerank.py` | 埋め込み検索 top-k を Reranker（base/ft）で再ランク、6 パターン評価 | `data/eval`, モデル | `rerank_metrics.json`, `rerank_examples.json` |
+| `distill.py` | 知識蒸留: teacher（リランカー or 嗜好モデル）→ student 埋め込み。負例マイニング＋MarginMSE/CoSENT | `data/train`, teacher, `Config` | `outputs/model_distilled`（または `distill_<variant>`） |
 | `tracking.py` | MLflow へのメトリクス・設定・タイミング記録（全ステージ共通） | run 引数・metrics dict | MLflow run |
 | `figures.py` | 結果可視化用図の生成（sample_grid / retrieval_before_after 等） | `data/`, `outputs/` | PNG 画像 |
 | `app.py` | 成果物（メトリクス・データ・リランク結果）を Gradio で可視化 | `data/`, `outputs/` | Web UI |
@@ -75,6 +90,7 @@ graph LR
     train["train.py"]
     train_reranker["train_reranker.py"]
     rerank["rerank.py"]
+    distill["distill.py"]
     figures["figures.py"]
     gendata["generate_data.py"]
 
@@ -84,6 +100,7 @@ graph LR
     config --> train
     config --> train_reranker
     config --> rerank
+    config --> distill
     config --> figures
 
     tracking --> gendata
@@ -91,24 +108,30 @@ graph LR
     tracking --> train
     tracking --> train_reranker
     tracking --> rerank
+    tracking --> distill
 
     preference --> prompts
     preference --> gendata
+    preference --> distill
     prompts --> gendata
     image_cache --> gendata
 
     models --> evaluate
     models --> train
     models --> rerank
+    models --> distill
 
     evaluate --> train
+    evaluate --> distill
+    train_reranker --> distill
 ```
 
 ポイント:
 - **`config.py` / `tracking.py`**: 全ステージが依存する共通基盤。設定解決と MLflow 記録を一元管理。
 - **`models.py` の共通化**: 学習・評価・リランクで同じ手順でモデルをロードするため、ロード処理を 1 箇所に集約。
 - **`evaluate.build_ir_evaluator` の再利用**: `train.py` が独自に評価器を組まず評価モジュールの実装を共有することで、学習中途中評価と最終評価の指標定義がズレない。
-- **`preference.py`**: データ生成の中心。`prompts.py` が preference モデルを使ってキャプションを生成し、`generate_data.py` が argmax-appeal ラベリングに使用。
+- **`preference.py`**: データ生成の中心。`prompts.py` が preference モデルを使ってキャプションを生成し、`generate_data.py` が argmax-appeal ラベリングに使用。蒸留の `oracle` teacher（`distill.py`）も同じ嗜好モデルを soft label の生成に再利用する。
+- **`distill.py` の再利用**: 負例マイニングは `train_reranker.mine_hard_negatives`、学習中の途中評価は `evaluate.build_ir_evaluator` をそのまま使い、評価は `evaluate.py` を `--model <蒸留先> --label distilled` で流用する（蒸留専用の評価コードは持たない）。
 
 ---
 
@@ -140,6 +163,17 @@ graph LR
 ### リランク事例 JSON（`rerank.py` → `app.py`）
 
 各ペルソナ代表クエリについて `query` / `num_relevant` / `best_rank_before_rerank` / `best_rank_after_rerank` / `hits_in_topk_before` / `hits_in_topk_after` / `top_k` を記録した配列。マルチポジティブ設定に対応し、正解集合の中での最良順位と top-k 内ヒット数を記録する。
+
+### 蒸留データセット（`distill.py` 内部）
+
+`distill.py` は train スプリットと teacher から蒸留用 `datasets.Dataset` をメモリ上で組み立てます（永続化はしない）。teacher により形（＝損失）が変わります。
+
+| teacher | loss | カラム |
+|---|---|---|
+| `reranker`（パターン A） | `MarginMSELoss` | `query`（ペルソナ名）/ `positive`（画像）/ `negative`（画像）/ `label`（teacher マージン `s_pos − s_neg`） |
+| `oracle`（パターン B） | `CoSENTLoss` | `query`（ペルソナ名）/ `answer`（画像）/ `label`（soft relevance = sigmoid(appeal/温度)） |
+
+負例は `train_reranker.mine_hard_negatives` の `(query, doc, label)` 列を `group_negatives` でクエリ単位に畳んでから、`build_margin_rows` / `build_oracle_rows`（いずれも純粋関数・単体テスト対象）で上表の行に変換します。
 
 ---
 

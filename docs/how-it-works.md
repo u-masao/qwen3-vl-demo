@@ -292,8 +292,11 @@ relevant_docs : q_i の正解 = 同一ペルソナの全画像（マルチポジ
 - `--label base`（既定）でベースモデルを評価 → `metrics_base.json`
 - `--finetuned` で `outputs/model/` の FT 済みモデルを評価 → `metrics_finetuned.json`
 
-ペルソナ嗜好タスクでは、ベースモデルが NDCG@10 ≈ 0.18（ランダムレベル）に対し、
-1 エポック FT 後は NDCG@10 ≈ 0.985 と劇的な改善が観測されています。
+既定のペルソナ嗜好タスク（`gamma=2.0`）では、ベースモデルが NDCG@10 ≈ 0.13・Acc@1 ≈ 0.19
+（7 ペルソナのランダムレベル）に対し、1 エポック FT 後は NDCG@10 ≈ 0.65・Acc@1 ≈ 0.53 へ改善します
+（実測値は [README の Results](../README.md#results) 参照）。嗜好タスクは埋め込み単体では天井に
+届かないため、リランカー（と後段の知識蒸留）が効く余地が残ります。legacy の subject タスクでは
+NDCG@10 ≈ 0.985 まで飽和し、その分リランカーの伸びしろはほぼありませんでした。
 
 ### なぜ改善するのか
 `"user_alpha"` → {猫・ピザ・バイク} というルールは事前学習では学べない恣意的な対応です。
@@ -352,7 +355,97 @@ top-k 内ヒット数（`hits_in_topk_before/after`）を記録し（`rerank_exa
 
 ---
 
-## ステージ 5: 可視化（`app.py`）
+## ステージ 5: 知識蒸留（`distill.py`）
+
+埋め込み FT（`train.py`）・リランカー FT（`train_reranker.py`）に続く **3 本目の学習**です。
+ねらいは「賢いが遅い／高コストな **teacher** の知識を、内積で速い **student（埋め込み bi-encoder）**
+にどこまで降ろせるか」を測ること。2 段階検索の精度はリランカーが稼ぎますが、リランカーは候補
+top-k しか触れず推論も重い。その知性を第 1 段（高速 retrieve）の埋め込み自身に移せれば、
+1 段だけで速く・賢く検索できるかもしれない、という実験です。**student は常に埋め込み bi-encoder**で、
+teacher を 2 つから選びます（`distill.teacher`）。
+
+### teacher = `reranker`（パターン A: cross → bi 蒸留）
+
+FT 済みリランカー（cross-encoder）が出す関連度スコアを teacher にします。各クエリの
+(positive, negative) ペアについて teacher の **マージン `s_pos − s_neg`** を、student の類似度差が
+再現するよう **`MarginMSELoss`** で学習します。
+
+```
+teacher（リランカー）:  s_pos = score(persona, pos_img),  s_neg = score(persona, neg_img)
+目標:                  sim_student(persona, pos) − sim_student(persona, neg) ≈ s_pos − s_neg
+```
+
+preference タスクの **非加法的な交互作用**（＝リランカーの伸びしろ。上の「計算 3: 嗜好スコアと
+非加法的交互作用」参照）を、内積で速い bi-encoder にどこまで移せるかを測る実験そのものです。
+`reranker.model_id` が null
+（smoke 等）のときは teacher が無いのでスキップします。
+
+### teacher = `oracle`（パターン B: 嗜好モデル → bi 蒸留）
+
+データの正解ラベルを作っている `preference.py` の **連続 appeal** を soft relevance
+（`sigmoid(appeal / 温度)`）に変換し、(persona, image) ペアの soft label として
+**`CoSENTLoss`** で学習します。teacher は「モデル」ではなく嗜好モデル（`preference_model.json`）
+なので **teacher 推論コストが 0**・追加 VRAM 不要で、CPU/smoke でも回せます。画像から属性を
+復元する必要があるため、`anchor`（生成プロンプト）から属性を逆算（`fragments_to_attributes`）して
+appeal を計算します。
+
+### 負例マイニングと VRAM のやりくり
+
+負例は `train_reranker.py` と同じ **ハードネガティブマイニング**（FT 済み埋め込みの類似度上位から
+正例を除いて選ぶ）で用意します。`mine_hard_negatives` の `(query, doc, label)` 列を
+`group_negatives` でクエリ単位に畳み、`build_margin_rows`（パターン A）/ `build_oracle_rows`
+（パターン B）で学習行に変換します（いずれも GPU 不要の純粋関数で、単体テストで挙動を固定）。
+
+16GB GPU に複数モデルを同居させないため、**1 モデルずつロード→解放**します:
+
+```
+① 埋め込み（マイニング）をロード → ハードネガティブ採取 → 解放
+② （teacher=reranker のとき）リランカーをロード → 必要ペアを採点 → 解放
+③ student 埋め込みをロード → 蒸留学習 → 保存
+```
+
+リランカー採点は、負例数を増やすと VRAM が WSL2 の共有メモリへ退避（spill）して激遅化するため、
+**チャンク分割してバッチ間で CUDA キャッシュを解放**します（Issue #25）。`oracle` teacher は
+②が丸ごと不要なので、この VRAM 問題を回避でき、負例数を増やしやすい利点があります。
+
+### 蒸留先（student）を切り替える
+
+`distill.student_model` で student の初期化元を選べます（`_resolve_student_id`）:
+
+- `none`／空 … **ベース埋め込みから**（自己蒸留）。蒸留単体の効果を `metrics_base` と比較できる。
+- `ft` … **FT 済み埋め込みから継続**蒸留する（`outputs/model` が無ければ早期エラー）。
+- その他 … 任意の HF ID／パス（小型 cross-modal 埋め込みへ圧縮）。
+
+現状サポートは `student_kind: bi`（検索用 bi-encoder）・`quantize: none` のみで、`cross`（リランカー
+圧縮）や `8bit/4bit`（QLoRA 自己蒸留）は今後のフェーズとして明示的にエラーを返します。なお `bi`
+student はクエリ **テキスト**と文書 **画像**を同一空間へ写す必要があるため、`student_model` は
+*cross-modal* 埋め込みでなければなりません（小型 multimodal 埋め込みは選択肢が乏しく、量子化が
+最も現実的な「小型 student」ルート）。DVC では `distill_variants` の各エントリを `foreach` で
+`distill@<name>` / `eval_distill@<name>` に展開し、variant ごとに独立キャッシュします。
+
+### 学習と評価
+
+`SentenceTransformerTrainer` で学習し、学習中の途中評価は `evaluate.build_ir_evaluator`（eval
+スプリット由来）を流用します。蒸留先のベストは早い step（しばしば ~step 50）に来やすいため、
+`save_strategy="best"` ＋ `load_best_model_at_end=True` で **ndcg@10 ベストのチェックポイントを
+ロード**します（Issue #20: これが無いと最終 step の劣化したモデルが使われていた）。クエリ
+プロンプトは base/FT/蒸留で一貫させ（`query_prompt_name`）、評価の食い違いを防ぎます。
+学習後は `cfg.distill_model_path` に保存し、評価は `evaluate.py` を `--model <dir> --label distilled`
+で流用します（専用コードは持たない）。
+
+### 何がわかったか
+
+`teacher × student 初期値` の 2×2（`self` / `ft_continue` / `oracle_base` / `oracle_ft`）を比較した
+ところ、**FT 済み埋め込みを起点に oracle で蒸留した `oracle_ft` が finetuned と同等**（MRR@10 ≈ 0.81）
+に達しました。teacher モデル不要・追加 VRAM なしで finetuned に匹敵するのが要点です。一方
+**base 起点の自己蒸留（`self` / `oracle_base`）は伸びにくい**（粗い表現空間では多数のハードネガティブを
+さばき切れない）。詳細は
+[蒸留実験レポート（Issue #25）](experiments/experiment_report_distillation_issue25.md) と
+[Issue #20 版](experiments/experiment_report_distillation_issue20_final.md) を参照してください。
+
+---
+
+## ステージ 6: 可視化（`app.py`）
 
 生成済みの成果物を Gradio で閲覧する読み取り専用ビューア（学習はしません）。
 
@@ -376,7 +469,9 @@ prompts.py が文を作る
             → evaluate が FT 後精度を測る（after）→ before と比較
                → train_reranker がリランカーを微調整する
                   → rerank が 2 段階検索で仕上げる
-                     → app.py で全部を可視化
+                     → distill が teacher（リランカー / 嗜好モデル）の知識を速い埋め込みへ蒸留
+                        → evaluate が蒸留後精度を測る（distilled）
+                           → app.py で全部を可視化
 ```
 
 「画像生成 ＋ ペルソナ嗜好マップ = 検索の学習データ」という 1 つの発想だけで、データ作成から
