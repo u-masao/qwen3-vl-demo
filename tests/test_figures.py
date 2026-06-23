@@ -7,7 +7,15 @@
 
 from __future__ import annotations
 
-from qwen3vl_demo.figures import _pick_query_indices, _select_grid_indices
+from qwen3vl_demo.figures import (
+    _appeal_components,
+    _confusion_matrix,
+    _count_personas,
+    _interaction_edges,
+    _pick_query_indices,
+    _select_grid_indices,
+    _select_latest_checkpoint,
+)
 
 
 def _fake_ds():
@@ -51,3 +59,63 @@ def test_pick_query_indices_distinct_personas():
 def test_pick_query_indices_limit():
     ds = _fake_ds()
     assert len(_pick_query_indices(ds, 1)) == 1
+
+
+# --- 学習曲線・嗜好図・混同行列の補助ロジック ------------------------------
+
+
+def test_select_latest_checkpoint_picks_max():
+    names = ["checkpoint-10", "checkpoint-250", "checkpoint-50"]
+    assert _select_latest_checkpoint(names) == "checkpoint-250"
+
+
+def test_select_latest_checkpoint_ignores_non_numeric():
+    names = ["checkpoint-best", "checkpoint-30", "foo"]
+    assert _select_latest_checkpoint(names) == "checkpoint-30"
+
+
+def test_select_latest_checkpoint_empty():
+    assert _select_latest_checkpoint([]) is None
+
+
+def test_count_personas_orders_by_count_without_order():
+    counts = _count_personas(["a", "b", "a", "a", "b", "c"])
+    assert counts == {"a": 3, "b": 2, "c": 1}
+
+
+def test_count_personas_with_order_fills_absent_with_zero():
+    counts = _count_personas(["a", "a", "c"], order=["a", "b", "c"])
+    assert counts == {"a": 2, "b": 0, "c": 1}
+    assert list(counts) == ["a", "b", "c"]  # 与えた順序を保つ
+
+
+def test_count_personas_appends_unknown_persona():
+    counts = _count_personas(["a", "z"], order=["a"])
+    assert counts["z"] == 1  # order に無いペルソナも取りこぼさない
+
+
+def test_interaction_edges_from_dict():
+    model = {"interactions": {"p": [[0.0, 2.0, -2.0], [1.0, 4.0, 1.5]]}}
+    assert _interaction_edges(model, "p") == [(0, 2, -2.0), (1, 4, 1.5)]
+    assert _interaction_edges(model, "missing") == []
+
+
+def test_confusion_matrix_counts_retrieved_personas():
+    order = ["a", "b"]
+    doc_personas = ["a", "a", "b"]  # doc 0,1 が a / doc 2 が b
+    ranked = [[0, 2], [1]]  # クエリ a は doc0,2 / クエリ b は doc1 を取得
+    queries = ["a", "b"]
+    # a 行: a を 1（doc0）・b を 1（doc2）/ b 行: a を 1（doc1）
+    assert _confusion_matrix(ranked, queries, doc_personas, order) == [[1, 1], [1, 0]]
+
+
+def test_appeal_components_sum_matches_appeal():
+    # 寄与分解（ノイズ除く）の和が、preference.appeal からノイズを引いた値に一致する。
+    from qwen3vl_demo.preference import _noise, appeal, build_model
+
+    model = build_model(seed=1)
+    persona = model.personas()[0]
+    attrs = [1, 0, 1, 0, 1, 0, 1]
+    lin, inter, pop = _appeal_components(model, persona, attrs)
+    expected = appeal(model, persona, attrs) - _noise(model, persona, attrs)
+    assert abs((lin + inter + pop) - expected) < 1e-9

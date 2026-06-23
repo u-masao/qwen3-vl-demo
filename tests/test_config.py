@@ -107,7 +107,7 @@ def test_no_overrides_keep_base_values():
     args = _parse(["--profile", "default"])
     cfg = config_from_args(args)
     assert cfg.train.epochs == 1
-    assert cfg.seed == 42
+    assert cfg.seed == 1  # default プロファイルの seed は 1（ce0404b で 42→1 に変更）
 
 
 def test_bool_override_value_style():
