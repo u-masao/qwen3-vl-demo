@@ -41,15 +41,44 @@ flowchart LR
 
 ![合成データセットのサンプル](docs/images/sample_grid.png)
 
+**ラベル付けの仕組み** — ペルソナの嗜好ベクトルから二値属性をサンプルし、プロンプト化して、
+*appeal*（魅力度）が argmax のペルソナをその画像のラベルにします。非加法的な交互作用により、
+生成元ペルソナと勝者がズレることがあります（リランカーの伸びしろの源）:
+
+![嗜好ラベル付けパイプライン](docs/images/preference_pipeline.png)
+
+**非加法的な交互作用** — 「warm も ornate も単体では好き、でも warm かつ ornate は嫌い」など
+（緑=加点 / 赤=減点）。線形な bi-encoder では引けない境界を、cross-encoder のリランカーが捉えます:
+
+![非加法的な交互作用](docs/images/preference_interactions.png)
+
+**ラベルの不均衡** — argmax-appeal によるラベル付けは、ペルソナ間で自然に不均衡になります:
+
+![ペルソナ別データ件数](docs/images/dataset_persona_counts.png)
+
 **パーソナライズ画像検索、ファインチューニング前後の比較** — 同じペルソナクエリの上位結果。
 緑枠 = argmax-appeal ペルソナがクエリと一致する画像。FT によって正解画像が上位に上がります:
 
 ![ファインチューニング前後の検索比較](docs/images/retrieval_before_after.png)
 
-**Gradio ビューア** — データセットの閲覧と、2 段階検索（埋め込み×リランカー）のメトリクス比較をブラウザで:
+**検索メトリクスと 2 段階検索** — 埋め込み Base vs FT と、2 段階検索の 4 パターン（埋め込み × リランカー）:
 
-![Gradio データセット閲覧タブ](docs/images/gradio_dataset.png)
-![Gradio 2段階検索（埋め込み×リランカー）タブ](docs/images/gradio_metrics.png)
+![Base vs FT メトリクス](docs/images/metrics_base_vs_ft.png)
+![2 段階検索メトリクス](docs/images/rerank_metrics.png)
+
+**学習曲線** — 埋め込み FT の loss と eval NDCG@10 の推移:
+
+![埋め込み FT の学習曲線](docs/images/training_curve.png)
+
+**Gradio ビューア**（`uv run python app.py` → http://localhost:7860）— パイプラインの成果物を
+ブラウザで対話的に確認できる読み取り専用ツール。6 つのタブがあります:
+
+- **📊 メトリクス比較** — 埋め込みのベース vs FT 検索精度（棒グラフ＋数値表）
+- **🖼️ データセット閲覧** — 生成画像をキャプション（＝生成プロンプト）付きで 1 枚ずつ閲覧
+- **🧑 ペルソナ閲覧** — アーキタイプ混合 → 嗜好埋め込み → 嗜好テキスト → 生成プロンプト → 生成画像、と非加法的交互作用
+- **🔄 Reranking デモ** — クエリごとのリランク前後の順位変化
+- **🔀 2 段階検索（6 パターン）** — 埋め込み × リランカーの 6 パターン比較
+- **📈 学習曲線** — 各ステージの `trainer_state.json` から loss / eval 指標
 
 ---
 

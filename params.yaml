@@ -7,7 +7,7 @@
 # each value flows into the stages' `cmd` via ${...} substitution.
 common:
   profile: default
-  seed: 42
+  seed: 1
   device: cuda
   dtype: bfloat16          # Ada supports bf16 natively; more stable than fp16 for training.
   paths:
