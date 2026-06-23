@@ -697,7 +697,7 @@ stages:
       md5: 1c2bba89f6aab353c970fdf06a94faa3
       size: 1539
   train_reranker:
-    cmd: "uv run python -m qwen3vl_demo.train_reranker --profile default --seed 42
+    cmd: "uv run python -m qwen3vl_demo.train_reranker --profile default --seed 1
       --device cuda --dtype bfloat16 --data-dir data --output-dir outputs --model-dir
       outputs/model --embedding-model Qwen/Qwen3-VL-Embedding-2B --attn-impl flash_attention_2
       --max-pixels 200704 --query-prompt-name default --reranker-model Qwen/Qwen3-VL-Reranker-2B
@@ -707,13 +707,13 @@ stages:
     deps:
     - path: data/train
       hash: md5
-      md5: e38721318a7df4f54b7b90d1dd154179.dir
-      size: 187717135
+      md5: e840e711dd3072b061bafbf2080edfea.dir
+      size: 186541975
       nfiles: 3
     - path: outputs/model
       hash: md5
-      md5: eb3d40b06400cf920b40065f791b739b.dir
-      size: 4266679567
+      md5: 0b34c77d33989e7b411589c55a7d48a7.dir
+      size: 4266674749
       nfiles: 14
     - path: src/qwen3vl_demo/models.py
       hash: md5
@@ -726,15 +726,15 @@ stages:
     outs:
     - path: outputs/reranker
       hash: md5
-      md5: e4767ba8337d170388d886756189d756.dir
-      size: 4266671516
+      md5: 783b530d8f68975f4ff59ac0095b752c.dir
+      size: 4266702188
       nfiles: 18
   generate_data:
-    cmd: "uv run python -m qwen3vl_demo.generate_data --profile default --seed 42
-      --device cuda --dtype bfloat16 --data-dir data --num-train 500 --num-eval 200
-      --image-size 512 --task preference --pref-gamma 2.0 --pref-lam 0.3 --pref-sigma
-      0.1 --pref-sharpness 2.0 --image-model black-forest-labs/FLUX.2-klein-4B --steps
-      4 --guidance-scale 1.0 --image-batch-size 1 --image-cache true --cache-dir .cache/imggen\n"
+    cmd: "uv run python -m qwen3vl_demo.generate_data --profile default --seed 1 --device
+      cuda --dtype bfloat16 --data-dir data --num-train 500 --num-eval 200 --image-size
+      512 --task preference --pref-gamma 2.0 --pref-lam 0.3 --pref-sigma 0.1 --pref-sharpness
+      2.0 --image-model black-forest-labs/FLUX.2-klein-4B --steps 4 --guidance-scale
+      1.0 --image-batch-size 1 --image-cache true --cache-dir .cache/imggen\n"
     deps:
     - path: src/qwen3vl_demo/generate_data.py
       hash: md5
@@ -759,23 +759,23 @@ stages:
     outs:
     - path: data/eval
       hash: md5
-      md5: f1b6642ee13c27ed6e16f3e6103fdd69.dir
-      size: 75789543
+      md5: 12cef4806f9a6f9adaa0b8a2232ae198.dir
+      size: 77102895
       nfiles: 3
     - path: data/train
       hash: md5
-      md5: e38721318a7df4f54b7b90d1dd154179.dir
-      size: 187717135
+      md5: e840e711dd3072b061bafbf2080edfea.dir
+      size: 186541975
       nfiles: 3
   eval_base:
-    cmd: "uv run python -m qwen3vl_demo.evaluate --profile default --seed 42 --data-dir
+    cmd: "uv run python -m qwen3vl_demo.evaluate --profile default --seed 1 --data-dir
       data --output-dir outputs --embedding-model Qwen/Qwen3-VL-Embedding-2B --attn-impl
       flash_attention_2 --max-pixels 200704 --query-prompt-name default --label base\n"
     deps:
     - path: data/eval
       hash: md5
-      md5: f1b6642ee13c27ed6e16f3e6103fdd69.dir
-      size: 75789543
+      md5: 12cef4806f9a6f9adaa0b8a2232ae198.dir
+      size: 77102895
       nfiles: 3
     - path: src/qwen3vl_demo/evaluate.py
       hash: md5
@@ -792,10 +792,10 @@ stages:
     outs:
     - path: outputs/metrics_base.json
       hash: md5
-      md5: 4330d7e78cbfc644a3abad643d80767d
-      size: 940
+      md5: 7141caf0a4da38e44c812695d4ea475e
+      size: 911
   train:
-    cmd: "uv run python -m qwen3vl_demo.train --profile default --seed 42 --device
+    cmd: "uv run python -m qwen3vl_demo.train --profile default --seed 1 --device
       cuda --dtype bfloat16 --data-dir data --output-dir outputs --model-dir outputs/model
       --embedding-model Qwen/Qwen3-VL-Embedding-2B --attn-impl flash_attention_2 --max-pixels
       200704 --query-prompt-name default --epochs 1 --batch-size 2 --grad-accum 1
@@ -804,13 +804,13 @@ stages:
     deps:
     - path: data/eval
       hash: md5
-      md5: f1b6642ee13c27ed6e16f3e6103fdd69.dir
-      size: 75789543
+      md5: 12cef4806f9a6f9adaa0b8a2232ae198.dir
+      size: 77102895
       nfiles: 3
     - path: data/train
       hash: md5
-      md5: e38721318a7df4f54b7b90d1dd154179.dir
-      size: 187717135
+      md5: e840e711dd3072b061bafbf2080edfea.dir
+      size: 186541975
       nfiles: 3
     - path: src/qwen3vl_demo/evaluate.py
       hash: md5
@@ -827,24 +827,24 @@ stages:
     outs:
     - path: outputs/model
       hash: md5
-      md5: eb3d40b06400cf920b40065f791b739b.dir
-      size: 4266679567
+      md5: 0b34c77d33989e7b411589c55a7d48a7.dir
+      size: 4266674749
       nfiles: 14
   eval:
-    cmd: "uv run python -m qwen3vl_demo.evaluate --profile default --seed 42 --data-dir
+    cmd: "uv run python -m qwen3vl_demo.evaluate --profile default --seed 1 --data-dir
       data --output-dir outputs --model-dir outputs/model --embedding-model Qwen/Qwen3-VL-Embedding-2B
       --attn-impl flash_attention_2 --max-pixels 200704 --query-prompt-name default
       --finetuned\n"
     deps:
     - path: data/eval
       hash: md5
-      md5: f1b6642ee13c27ed6e16f3e6103fdd69.dir
-      size: 75789543
+      md5: 12cef4806f9a6f9adaa0b8a2232ae198.dir
+      size: 77102895
       nfiles: 3
     - path: outputs/model
       hash: md5
-      md5: eb3d40b06400cf920b40065f791b739b.dir
-      size: 4266679567
+      md5: 0b34c77d33989e7b411589c55a7d48a7.dir
+      size: 4266674749
       nfiles: 14
     - path: src/qwen3vl_demo/evaluate.py
       hash: md5
@@ -861,10 +861,10 @@ stages:
     outs:
     - path: outputs/metrics_finetuned.json
       hash: md5
-      md5: d3d713ecff6eda103465cf5c591a7356
-      size: 866
+      md5: 2b14eb3a1999bc1b7096c51cb66af4c9
+      size: 915
   rerank:
-    cmd: "uv run python -m qwen3vl_demo.rerank --profile default --seed 42 --device
+    cmd: "uv run python -m qwen3vl_demo.rerank --profile default --seed 1 --device
       cuda --data-dir data --output-dir outputs --model-dir outputs/model --embedding-model
       Qwen/Qwen3-VL-Embedding-2B --attn-impl flash_attention_2 --max-pixels 200704
       --query-prompt-name default --reranker-model Qwen/Qwen3-VL-Reranker-2B --reranker-dir
@@ -873,18 +873,18 @@ stages:
     deps:
     - path: data/eval
       hash: md5
-      md5: f1b6642ee13c27ed6e16f3e6103fdd69.dir
-      size: 75789543
+      md5: 12cef4806f9a6f9adaa0b8a2232ae198.dir
+      size: 77102895
       nfiles: 3
     - path: outputs/model
       hash: md5
-      md5: eb3d40b06400cf920b40065f791b739b.dir
-      size: 4266679567
+      md5: 0b34c77d33989e7b411589c55a7d48a7.dir
+      size: 4266674749
       nfiles: 14
     - path: outputs/reranker
       hash: md5
-      md5: e4767ba8337d170388d886756189d756.dir
-      size: 4266671516
+      md5: 783b530d8f68975f4ff59ac0095b752c.dir
+      size: 4266702188
       nfiles: 18
     - path: src/qwen3vl_demo/models.py
       hash: md5
@@ -901,12 +901,12 @@ stages:
     outs:
     - path: outputs/rerank_examples.json
       hash: md5
-      md5: b82a2bd2e7f4202fbec092946dc70156
-      size: 1735
+      md5: 604f4471194d9cf3938aed82cd129aef
+      size: 1728
     - path: outputs/rerank_metrics.json
       hash: md5
-      md5: 2a5bd6cbf83c6d7932253fe122fbc3c3
-      size: 1541
+      md5: 34711b52fca79633d7ea616e33deef8d
+      size: 1548
   distill@self:
     cmd: "uv run python -m qwen3vl_demo.distill --profile default --seed 42 --device
       cuda --dtype bfloat16 --data-dir data --output-dir outputs --model-dir outputs/model
@@ -1089,7 +1089,7 @@ stages:
       md5: f6b5c53d5288e8c2d4009c60bd60ad3b
       size: 871
   distill@oracle_base:
-    cmd: "uv run python -m qwen3vl_demo.distill --profile default --seed 42 --device
+    cmd: "uv run python -m qwen3vl_demo.distill --profile default --seed 1 --device
       cuda --dtype bfloat16 --data-dir data --output-dir outputs --model-dir outputs/model
       --embedding-model Qwen/Qwen3-VL-Embedding-2B --attn-impl flash_attention_2 --max-pixels
       200704 --query-prompt-name default --reranker-model Qwen/Qwen3-VL-Reranker-2B
@@ -1102,23 +1102,23 @@ stages:
     deps:
     - path: data/eval
       hash: md5
-      md5: f1b6642ee13c27ed6e16f3e6103fdd69.dir
-      size: 75789543
+      md5: 12cef4806f9a6f9adaa0b8a2232ae198.dir
+      size: 77102895
       nfiles: 3
     - path: data/train
       hash: md5
-      md5: e38721318a7df4f54b7b90d1dd154179.dir
-      size: 187717135
+      md5: e840e711dd3072b061bafbf2080edfea.dir
+      size: 186541975
       nfiles: 3
     - path: outputs/model
       hash: md5
-      md5: eb3d40b06400cf920b40065f791b739b.dir
-      size: 4266679567
+      md5: 0b34c77d33989e7b411589c55a7d48a7.dir
+      size: 4266674749
       nfiles: 14
     - path: outputs/reranker
       hash: md5
-      md5: e4767ba8337d170388d886756189d756.dir
-      size: 4266671516
+      md5: 783b530d8f68975f4ff59ac0095b752c.dir
+      size: 4266702188
       nfiles: 18
     - path: src/qwen3vl_demo/distill.py
       hash: md5
@@ -1143,11 +1143,11 @@ stages:
     outs:
     - path: outputs/distill_oracle_base
       hash: md5
-      md5: 9c59ad1579336a57c4ee78ba436721a6.dir
-      size: 4266656719
+      md5: d70120264f1825698baee40daddd751f.dir
+      size: 4266647079
       nfiles: 14
   distill@oracle_ft:
-    cmd: "uv run python -m qwen3vl_demo.distill --profile default --seed 42 --device
+    cmd: "uv run python -m qwen3vl_demo.distill --profile default --seed 1 --device
       cuda --dtype bfloat16 --data-dir data --output-dir outputs --model-dir outputs/model
       --embedding-model Qwen/Qwen3-VL-Embedding-2B --attn-impl flash_attention_2 --max-pixels
       200704 --query-prompt-name default --reranker-model Qwen/Qwen3-VL-Reranker-2B
@@ -1160,23 +1160,23 @@ stages:
     deps:
     - path: data/eval
       hash: md5
-      md5: f1b6642ee13c27ed6e16f3e6103fdd69.dir
-      size: 75789543
+      md5: 12cef4806f9a6f9adaa0b8a2232ae198.dir
+      size: 77102895
       nfiles: 3
     - path: data/train
       hash: md5
-      md5: e38721318a7df4f54b7b90d1dd154179.dir
-      size: 187717135
+      md5: e840e711dd3072b061bafbf2080edfea.dir
+      size: 186541975
       nfiles: 3
     - path: outputs/model
       hash: md5
-      md5: eb3d40b06400cf920b40065f791b739b.dir
-      size: 4266679567
+      md5: 0b34c77d33989e7b411589c55a7d48a7.dir
+      size: 4266674749
       nfiles: 14
     - path: outputs/reranker
       hash: md5
-      md5: e4767ba8337d170388d886756189d756.dir
-      size: 4266671516
+      md5: 783b530d8f68975f4ff59ac0095b752c.dir
+      size: 4266702188
       nfiles: 18
     - path: src/qwen3vl_demo/distill.py
       hash: md5
@@ -1201,24 +1201,24 @@ stages:
     outs:
     - path: outputs/distill_oracle_ft
       hash: md5
-      md5: 7f393d765b5fe19dafc530196c176145.dir
-      size: 4266656648
+      md5: 7203a83546cb7ca470677115230358d2.dir
+      size: 4266646998
       nfiles: 14
   eval_distill@oracle_base:
-    cmd: "uv run python -m qwen3vl_demo.evaluate --profile default --seed 42 --data-dir
+    cmd: "uv run python -m qwen3vl_demo.evaluate --profile default --seed 1 --data-dir
       data --output-dir outputs --embedding-model Qwen/Qwen3-VL-Embedding-2B --attn-impl
       flash_attention_2 --max-pixels 200704 --query-prompt-name default --model outputs/distill_oracle_base
       --label distill_oracle_base\n"
     deps:
     - path: data/eval
       hash: md5
-      md5: f1b6642ee13c27ed6e16f3e6103fdd69.dir
-      size: 75789543
+      md5: 12cef4806f9a6f9adaa0b8a2232ae198.dir
+      size: 77102895
       nfiles: 3
     - path: outputs/distill_oracle_base
       hash: md5
-      md5: 9c59ad1579336a57c4ee78ba436721a6.dir
-      size: 4266656719
+      md5: d70120264f1825698baee40daddd751f.dir
+      size: 4266647079
       nfiles: 14
     - path: src/qwen3vl_demo/evaluate.py
       hash: md5
@@ -1235,23 +1235,23 @@ stages:
     outs:
     - path: outputs/metrics_distill_oracle_base.json
       hash: md5
-      md5: b7273a6a45cab5bec070c3757ec10287
-      size: 895
+      md5: b3c5ec68841bd14c1f53f1e32ea11ee0
+      size: 894
   eval_distill@oracle_ft:
-    cmd: "uv run python -m qwen3vl_demo.evaluate --profile default --seed 42 --data-dir
+    cmd: "uv run python -m qwen3vl_demo.evaluate --profile default --seed 1 --data-dir
       data --output-dir outputs --embedding-model Qwen/Qwen3-VL-Embedding-2B --attn-impl
       flash_attention_2 --max-pixels 200704 --query-prompt-name default --model outputs/distill_oracle_ft
       --label distill_oracle_ft\n"
     deps:
     - path: data/eval
       hash: md5
-      md5: f1b6642ee13c27ed6e16f3e6103fdd69.dir
-      size: 75789543
+      md5: 12cef4806f9a6f9adaa0b8a2232ae198.dir
+      size: 77102895
       nfiles: 3
     - path: outputs/distill_oracle_ft
       hash: md5
-      md5: 7f393d765b5fe19dafc530196c176145.dir
-      size: 4266656648
+      md5: 7203a83546cb7ca470677115230358d2.dir
+      size: 4266646998
       nfiles: 14
     - path: src/qwen3vl_demo/evaluate.py
       hash: md5
@@ -1268,5 +1268,5 @@ stages:
     outs:
     - path: outputs/metrics_distill_oracle_ft.json
       hash: md5
-      md5: f1784fc3245f3bd3cadf2c3c224fe543
-      size: 875
+      md5: 29bce281f44046f596fe8b3bbaaad47d
+      size: 876
