@@ -61,6 +61,7 @@ stages:
       --label base
     deps:
       - src/qwen3vl_demo/evaluate.py
+      - src/qwen3vl_demo/metrics.py
       - src/qwen3vl_demo/models.py
       - src/qwen3vl_demo/tracking.py
       - ${common.paths.data_dir}/eval
@@ -94,6 +95,7 @@ stages:
       --logging-steps ${train.logging_steps}
     deps:
       - src/qwen3vl_demo/evaluate.py
+      - src/qwen3vl_demo/metrics.py
       - src/qwen3vl_demo/models.py
       - src/qwen3vl_demo/train.py
       - ${common.paths.data_dir}/train
@@ -117,6 +119,7 @@ stages:
       --finetuned
     deps:
       - src/qwen3vl_demo/evaluate.py
+      - src/qwen3vl_demo/metrics.py
       - src/qwen3vl_demo/models.py
       - src/qwen3vl_demo/tracking.py
       - ${common.paths.data_dir}/eval
@@ -208,6 +211,7 @@ stages:
       deps:
         - src/qwen3vl_demo/distill.py
         - src/qwen3vl_demo/evaluate.py
+        - src/qwen3vl_demo/metrics.py
         - src/qwen3vl_demo/models.py
         - src/qwen3vl_demo/preference.py
         - src/qwen3vl_demo/train_reranker.py
@@ -237,6 +241,7 @@ stages:
         --label distill_${key}
       deps:
         - src/qwen3vl_demo/evaluate.py
+        - src/qwen3vl_demo/metrics.py
         - src/qwen3vl_demo/models.py
         - src/qwen3vl_demo/tracking.py
         - ${common.paths.data_dir}/eval
@@ -268,6 +273,7 @@ stages:
       --relevant-same-category ${data.relevant_same_category}
       --num-queries 7
     deps:
+      - src/qwen3vl_demo/metrics.py
       - src/qwen3vl_demo/models.py
       - src/qwen3vl_demo/rerank.py
       - src/qwen3vl_demo/tracking.py
