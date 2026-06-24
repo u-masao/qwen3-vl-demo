@@ -176,7 +176,54 @@ reranker teacher 採点（CrossEncoder, Qwen3-VL-Reranker-2B）のピーク VRAM
 
 ## 補足: 実行メモ
 
-- ログ: `tmp/repro_seed1.log`（フル実行・OOM まで） / `tmp/repro_seed1_resume.log`（oracle 系再開）。
+- ログ: `tmp/repro_seed1.log`（フル実行・OOM まで） / `tmp/repro_seed1_resume.log`（oracle 系再開） /
+  `tmp/repro_rerankfix.log`（リランカー best 選択導入の再実行）。
 - `dvc.lock` は seed 混在状態（oracle 系=seed1 / self・ft_continue=seed42 の旧記録）。
 - メトリクス JSON: `outputs/metrics_base.json` / `metrics_finetuned.json` /
   `metrics_distill_oracle_{base,ft}.json` / `rerank_metrics.json`。
+
+---
+
+## 追記（2026-06-23）: リランカー学習にベストモデル選択を導入（対策①）
+
+### 背景
+
+考察 §3 のとおり、リランカーが検索精度を悪化させた引き金は **train_reranker が「最終
+チェックポイント」をそのまま保存していた**こと（`save_steps`=10000 > 総 step、`eval_strategy`・
+`load_best_model_at_end` なし）。極小バッチで乱高下するロスの“末尾のハズレ点”に着地していた。
+
+### 変更
+
+- `train_reranker.py`: 学習ペアの 10% を held-out 化し、`eval_strategy="steps"` /
+  `load_best_model_at_end=True` / `metric_for_best_model="eval_loss"` を導入。`eval`・`save` を
+  `eval_steps`(=50) に揃える。`per_device_eval_batch_size` は学習と同じ 2 に固定（OOM 回避）。
+- `dvc.yaml`: `train_reranker` の cmd を `--save-steps` → `--eval-steps` に置換。
+
+> ※ 学習中の選択指標に MRR/NDCG を使う案は見送り。eval が 7 persona で不安定なうえ、学習中に
+> reranker 採点を繰り返すと distill で起きた採点 OOM を再誘発しうるため。held-out BCE loss で
+> 「最終点ガチャ」を直接潰し、最終的な検索 MRR/NDCG は rerank ステージで測る方針とした。
+
+### 結果（seed=1, FT 埋め込みに対するリランク）
+
+| 構成 | 修正前（last ckpt） | 修正後（best=ckpt-50） |
+|------|--------------------|----------------------|
+| ft + none | MRR 0.830 / NDCG@10 0.549 / NDCG@1 0.660 | （同左・リランクなし） |
+| ft + base | MRR 0.761 / 0.538 / 0.595 | （同左・base reranker） |
+| ft + ft | MRR 0.655 / 0.510 / 0.385 | **MRR 0.665 / 0.531 / 0.465** |
+
+- FT リランカーは小幅改善（NDCG@1 0.385→0.465、NDCG@10 0.510→0.531、MRR 0.655→0.665）。
+- ただし **依然 ft+none(0.830) を下回り、base reranker(0.761) にも届かない**＝リランクは依然マイナス。
+- 選ばれたのは **`checkpoint-50`（900 step 中の最初の評価点、eval_loss=0.510）**。
+  以降 eval_loss は下がらず＝**リランカーは ~50 step で過学習**している。
+
+### 解釈と次の一手
+
+対策①は「最終点ガチャ」を解消する正しい方法論であり残す価値があるが、seed=1 の
+「リランクが精度を悪化させる」問題自体は解けない。より深い原因は
+(a) リランカーが即座に過学習（best=step50）、(b) 埋め込みが既に強く伸び代が無い、
+(c) eval が 7 persona で高分散、の合わせ技。
+
+- **過学習対策**: さらに短い学習 / 低 LR / weight decay / early-stopping 強化。
+- **eval 解像度**: persona を増やしてリランカー可否を信頼性高く判定。
+- **設計再考**: 強い bi-encoder（特に oracle_ft 蒸留 NDCG 0.622）前提なら、2 段リランク自体の
+  費用対効果を見直す。
