@@ -703,7 +703,7 @@ stages:
       --max-pixels 200704 --query-prompt-name default --reranker-model Qwen/Qwen3-VL-Reranker-2B
       --reranker-dir outputs/reranker --reranker-max-pixels 100352 --num-negatives
       3 --epochs 1 --batch-size 2 --grad-accum 1 --lr 2e-05 --warmup-ratio 0.1 --gradient-checkpointing
-      true --save-steps 10000 --logging-steps 10\n"
+      true --eval-steps 50 --logging-steps 10\n"
     deps:
     - path: data/train
       hash: md5
@@ -721,14 +721,14 @@ stages:
       size: 4938
     - path: src/qwen3vl_demo/train_reranker.py
       hash: md5
-      md5: 1120ec941d64d51547fb77ddc4c700a1
-      size: 13753
+      md5: bfb114d54beaa4f4abc63a9fcf030ccf
+      size: 14969
     outs:
     - path: outputs/reranker
       hash: md5
-      md5: 783b530d8f68975f4ff59ac0095b752c.dir
-      size: 4266702188
-      nfiles: 18
+      md5: 88052321d9906e92dd9bf4b1c223a996.dir
+      size: 4266873380
+      nfiles: 20
   generate_data:
     cmd: "uv run python -m qwen3vl_demo.generate_data --profile default --seed 1 --device
       cuda --dtype bfloat16 --data-dir data --num-train 500 --num-eval 200 --image-size
@@ -883,9 +883,9 @@ stages:
       nfiles: 14
     - path: outputs/reranker
       hash: md5
-      md5: 783b530d8f68975f4ff59ac0095b752c.dir
-      size: 4266702188
-      nfiles: 18
+      md5: 88052321d9906e92dd9bf4b1c223a996.dir
+      size: 4266873380
+      nfiles: 20
     - path: src/qwen3vl_demo/models.py
       hash: md5
       md5: 24df6fe63194e7802c546043398fcf5b
@@ -901,12 +901,12 @@ stages:
     outs:
     - path: outputs/rerank_examples.json
       hash: md5
-      md5: 604f4471194d9cf3938aed82cd129aef
+      md5: e69f3fdbce1d21f97773d95566915b03
       size: 1728
     - path: outputs/rerank_metrics.json
       hash: md5
-      md5: 34711b52fca79633d7ea616e33deef8d
-      size: 1548
+      md5: dc3129735e36f716a5e843d1058d371e
+      size: 1573
   distill@self:
     cmd: "uv run python -m qwen3vl_demo.distill --profile default --seed 42 --device
       cuda --dtype bfloat16 --data-dir data --output-dir outputs --model-dir outputs/model
