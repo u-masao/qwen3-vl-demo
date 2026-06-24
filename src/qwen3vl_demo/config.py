@@ -186,6 +186,12 @@ class DistillCfg:
     student_kind: str = "bi"
     # student を量子化ロードするか。"none"（既定）/ "8bit" / "4bit"（QLoRA, GPU 限定）。
     quantize: str = "none"
+    # teacher CrossEncoder 採点のチャンクサイズ。バッチ間で empty_cache() を呼ぶ頻度を制御する。
+    # 小さいほど VRAM スパイクが抑えられる（OOM 対策、Issue #30）。
+    score_chunk_size: int = 32
+    # teacher CrossEncoder predict の batch_size。デフォルト（None=32）より小さくすると
+    # 1バッチあたりのアクティベーションが減りピーク VRAM を下げられる（OOM 対策、Issue #30）。
+    score_batch_size: int = 8
 
 
 @dataclass
@@ -551,6 +557,18 @@ def add_distill_args(parser: argparse.ArgumentParser) -> None:
         default=_UNSET,
         help="student の量子化: none / 8bit / 4bit（distill.quantize）。",
     )
+    g.add_argument(
+        "--distill-score-chunk-size",
+        type=int,
+        default=_UNSET,
+        help="teacher CrossEncoder 採点のチャンクサイズ（distill.score_chunk_size）。",
+    )
+    g.add_argument(
+        "--distill-score-batch-size",
+        type=int,
+        default=_UNSET,
+        help="teacher CrossEncoder predict の batch_size（distill.score_batch_size）。",
+    )
 
 
 def add_train_args(parser: argparse.ArgumentParser) -> None:
@@ -637,6 +655,8 @@ def _override_targets(cfg: Config):
         "distill_student_model": (cfg.distill, "student_model"),
         "distill_student_kind": (cfg.distill, "student_kind"),
         "distill_quantize": (cfg.distill, "quantize"),
+        "distill_score_chunk_size": (cfg.distill, "score_chunk_size"),
+        "distill_score_batch_size": (cfg.distill, "score_batch_size"),
         "epochs": (cfg.train, "epochs"),
         "batch_size": (cfg.train, "per_device_batch_size"),
         "grad_accum": (cfg.train, "gradient_accumulation_steps"),

@@ -189,12 +189,13 @@ def _teacher_reranker_scores(
 
     # 8000件規模ではVRAMがWSL2共有メモリへ退避しOOMになるため、チャンク単位で採点し
     # バッチ間でCUDAキャッシュを解放する（Issue #25）。
-    # _SCORE_CHUNK=32 と batch_size=8 の組み合わせでピーク VRAM を抑制（Issue #30）。
-    _SCORE_CHUNK = 32
+    # score_chunk_size / score_batch_size は params.yaml で調整可能（Issue #30）。
+    score_chunk = cfg.distill.score_chunk_size
+    score_batch = cfg.distill.score_batch_size
     raw_scores: list[float] = []
-    for start in range(0, len(needed), _SCORE_CHUNK):
-        chunk = [[personas[q], images[doc]] for q, doc in needed[start : start + _SCORE_CHUNK]]
-        scores = reranker.predict(chunk, batch_size=8, show_progress_bar=False)
+    for start in range(0, len(needed), score_chunk):
+        chunk = [[personas[q], images[doc]] for q, doc in needed[start : start + score_chunk]]
+        scores = reranker.predict(chunk, batch_size=score_batch, show_progress_bar=False)
         raw_scores.extend(float(s) for s in scores)
         if cfg.device != "cpu":
             import torch
