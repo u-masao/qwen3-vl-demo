@@ -151,7 +151,7 @@ stages:
       --lr ${train.learning_rate}
       --warmup-ratio ${train.warmup_ratio}
       --gradient-checkpointing ${train.gradient_checkpointing}
-      --save-steps ${train.save_steps}
+      --eval-steps ${train.eval_steps}
       --logging-steps ${train.logging_steps}
     deps:
       - src/qwen3vl_demo/models.py
