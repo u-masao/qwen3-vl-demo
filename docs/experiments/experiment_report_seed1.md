@@ -227,3 +227,59 @@ reranker teacher 採点（CrossEncoder, Qwen3-VL-Reranker-2B）のピーク VRAM
 - **eval 解像度**: persona を増やしてリランカー可否を信頼性高く判定。
 - **設計再考**: 強い bi-encoder（特に oracle_ft 蒸留 NDCG 0.622）前提なら、2 段リランク自体の
   費用対効果を見直す。
+
+---
+
+## 追記（2026-06-24）: eval の信頼化（per-persona マクロ集計＋不確かさの明示）
+
+### 背景・方針
+
+3 段構成（retriever→reranker→distill）を**信頼して比較できる評価基盤**にすることが目的。
+本対策は **教師データ・タスク難易度を一切変えず**（プロジェクト方針：本格的な難易度化＝
+ペルソナ/軸の手続き的生成は後続）、**集計と報告だけを正しくする**。学習系は再実行せず、
+評価系のみ `dvc repro -s` で再計算（~7 分）。
+
+問題は 2 つ: (1) eval が **7 persona ＝実効 7 クエリ**、(2) 200 行（画像単位）の**マイクロ平均**で
+頻出ペルソナ（user_beta=43 枚）が指標を支配して偏る。
+
+### 変更
+
+- 新規 `metrics.py`: `ir_metrics` / `per_persona_metrics` / `macro_summary`（per-persona マクロ平均＋
+  std/min/max＋ブートストラップ信頼区間）。`evaluate.py`・`rerank.py` 双方から再利用。
+- `evaluate.py`: `build_ir_evaluator` のクエリを **ユニーク persona ごとに 1 つ**へ集約
+  （IR 評価器の等重み平均＝per-persona マクロに）。`metrics_<label>_detail.json` に内訳・ばらつき出力。
+- `rerank.py`: `rerank_metrics.json` を per-persona マクロ（後方互換キー）に。
+  `rerank_metrics_detail.json` に per-persona 内訳・ばらつき・参考のマイクロ平均を出力。
+- `dvc.yaml`: `metrics.py` を import 元ステージの dep に追加。
+
+### 結果（per-persona マクロ。頻度バイアス除去で数値が変わる）
+
+| モデル | macro MRR（旧 micro） | macro NDCG@10 | MRR の 95%CI |
+|--------|---------------------:|--------------:|:-----------:|
+| base | 0.284（0.354） | 0.119 | [0.12, 0.55] |
+| finetuned | 0.786（0.823） | 0.505 | [0.57, 0.93] |
+| distill_oracle_base | 0.239（—） | 0.136 | [0.08, 0.51] |
+| **distill_oracle_ft** | **0.857** | **0.601** | [0.71, 1.00] |
+
+リランク（FT 埋め込み, per-persona マクロ）: ft+none **0.786** → ft+base 0.719 → ft+ft 0.631
+（**マクロでもリランカーは悪化**＝結論不変だが公平に測れた）。
+
+### 主要な気づき
+
+- **user_beta が易しすぎてマイクロを吊り上げていた**: base の per-persona MRR は user_beta=1.0 に対し
+  他は 0.06〜0.25。マクロ化で偏りが消え、finetuned は 0.823→**0.786**、oracle_ft は **0.857** が正。
+- **難しい persona が見えるように**: user_alpha / delta / eta が一貫して低い（retriever の弱点）。
+- **不確かさを明示**: MRR の 95%CI は ±0.15〜0.25 と広い。**7 persona では検出力が低い**ことが
+  数値で出た＝「絶対値や seed 間差を過信しない」根拠。
+
+### 限界（意図的な切り分け）
+
+集計の正しさ（頻度バイアス除去）と不確かさの明示までが本対策。**誤差バーの幅自体は persona 数に
+律速**され、これ以上狭めるには後続の**手続き的生成によるペルソナ増（タスク難易度化）**が要る。
+本対策はその土台（信頼できる物差し）を先に用意するもの。
+
+### 補足
+
+per-persona 内訳・ばらつき・CI は `outputs/*_detail.json`（`metrics_<label>_detail.json` /
+`rerank_metrics_detail.json`）。`outputs/` は VCS 非追跡。図表（`figures.py` / `app.py`）への
+per-persona・誤差バー表示は本対策では未着手（後続）。
