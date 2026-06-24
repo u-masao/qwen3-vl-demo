@@ -29,6 +29,7 @@ from .config import (
     add_embedding_args,
     config_from_args,
 )
+from .metrics import ir_metrics, macro_summary
 from .models import load_embedding_model
 from .tracking import EXPERIMENT_NAME, Timer, cli_run, log_metrics
 
@@ -54,18 +55,19 @@ def build_ir_evaluator(cfg: Config, name: str = EVALUATOR_NAME):
     relevant_docs: dict[str, set[str]] = {}  # qid -> 正解 cid の集合
     persona_to_cids: dict[str, set[str]] = {}  # ペルソナ -> その cid 集合
 
-    # 1 周目: corpus / queries / persona_to_cids を構築する。
+    # 1 周目: corpus（全画像）と persona->cid を構築する。
     for i, row in enumerate(eval_ds):
-        qid = f"q{i}"
         cid = f"d{i}"
-        queries[qid] = row["persona"]
         corpus[cid] = row["positive"]
         persona_to_cids.setdefault(row["persona"], set()).add(cid)
 
-    # 2 周目: 同一ペルソナの全画像を正解集合とする（マルチポジティブ）。
-    for i, row in enumerate(eval_ds):
-        qid = f"q{i}"
-        relevant_docs[qid] = set(persona_to_cids[row["persona"]])
+    # クエリは **ユニークなペルソナごとに 1 つ**にする（行＝画像単位だと頻出ペルソナに偏った
+    # マイクロ平均になる。1 ペルソナ 1 クエリにすると IR 評価器の等重み平均が per-persona
+    # マクロ平均になり、頻度バイアスが消える）。正解は同一ペルソナの全画像（マルチポジティブ）。
+    for persona, cids in persona_to_cids.items():
+        qid = f"persona::{persona}"
+        queries[qid] = persona
+        relevant_docs[qid] = set(cids)
 
     return InformationRetrievalEvaluator(
         queries=queries,
@@ -76,6 +78,39 @@ def build_ir_evaluator(cfg: Config, name: str = EVALUATOR_NAME):
         show_progress_bar=False,
         write_csv=False,
     )
+
+
+def compute_per_persona_detail(
+    cfg: Config, model, ks: tuple[int, ...] = (1, 5, 10), ci_resamples: int = 1000
+) -> dict:
+    """ロード済みモデルで per-persona の検索メトリクス内訳・ばらつきを計算する。
+
+    eval 画像 200 枚をコーパス、ユニークペルソナ（数種）をクエリとして検索し、ペルソナ単位の
+    Recall@k / NDCG@k / MRR と、それらの**マクロ平均・std/min/max・ブートストラップ CI** を返す。
+    頻度バイアスの無い「信頼できる」指標と、不確かさ（CI が広い＝検出力が低い）を可視化するため。
+    """
+    eval_ds = load_from_disk(str(cfg.data_path / "eval"))
+    corpus_images = [row["positive"] for row in eval_ds]
+    row_personas = [row["persona"] for row in eval_ds]
+    personas = sorted(set(row_personas))
+    relevant_idx = {p: {i for i, rp in enumerate(row_personas) if rp == p} for p in personas}
+
+    corpus_emb = model.encode(corpus_images, convert_to_tensor=True, show_progress_bar=False)
+    # クエリ側は IR 評価器と同じ query_prompt_name で埋め込む（指標を揃える）。
+    query_emb = model.encode(
+        personas,
+        convert_to_tensor=True,
+        show_progress_bar=False,
+        prompt_name=cfg.embedding.query_prompt_name,
+    )
+    sim = model.similarity(query_emb, corpus_emb)  # [persona 数, コーパス数]
+    n = len(corpus_images)
+
+    per_persona: dict[str, dict[str, float]] = {}
+    for qi, persona in enumerate(personas):
+        ranked = sim[qi].topk(n).indices.tolist()
+        per_persona[persona] = ir_metrics([ranked], [relevant_idx[persona]], list(ks))
+    return macro_summary(per_persona, ci_resamples=ci_resamples, seed=cfg.seed)
 
 
 def evaluate_model(cfg: Config, model_id: str, label: str) -> dict:
@@ -97,6 +132,17 @@ def evaluate_model(cfg: Config, model_id: str, label: str) -> dict:
     out_file = cfg.output_path / f"metrics_{label}.json"
     with open(out_file, "w", encoding="utf-8") as fh:
         json.dump(metrics, fh, indent=2, sort_keys=True)
+
+    # per-persona 内訳・ばらつき（信頼性向上）。本体メトリクスは保存済みなので、ここで失敗しても
+    # 評価ステージは止めない（モデルを再利用して別ファイルに出すだけ）。
+    try:
+        detail = compute_per_persona_detail(cfg, model)
+        detail_file = cfg.output_path / f"metrics_{label}_detail.json"
+        with open(detail_file, "w", encoding="utf-8") as fh:
+            json.dump(detail, fh, indent=2, sort_keys=True)
+        logger.info("  per-persona 内訳 -> %s", detail_file)
+    except Exception:  # noqa: BLE001 - 内訳は補助情報。本体は出力済みなので続行する
+        logger.exception("per-persona 内訳の計算に失敗（メトリクス本体は出力済み）")
 
     _print_headline(metrics, label)
     logger.info("  全メトリクス -> %s", out_file)

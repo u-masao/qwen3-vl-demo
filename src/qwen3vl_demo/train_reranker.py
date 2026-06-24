@@ -230,7 +230,13 @@ def train_reranker(cfg: Config) -> None:
     # ハード負例マイニング（埋め込みモデルをロード→解放）を **リランカーのロードより先に** 行う。
     # 順序を逆にすると、マイニング中に埋め込み(2B)とリランカー(2B)が VRAM に同居してピークが
     # 膨らみ、16GB カードでは枯渇する（WSL2 では共有メモリへ退避して極端に遅くなる）。
-    train_ds = _build_reranker_dataset(cfg)
+    full_ds = _build_reranker_dataset(cfg)
+    # 学習末尾の“ハズレ点”をそのまま保存しないための held-out 評価。極小バッチ（bs×負例）由来で
+    # BCE ロスが乱高下するため、最終ステップの重みが不安定な高ロス点に着地することがある
+    # （seed 依存でリランカーが劣化し、rerank が埋め込み単体より悪化する原因）。10% を評価に回し、
+    # eval_loss 最小のチェックポイントを load_best_model_at_end で選んで安定化させる。
+    split = full_ds.train_test_split(test_size=0.1, seed=cfg.seed)
+    train_ds, eval_ds = split["train"], split["test"]
 
     # 学習時も画像トークンを max_pixels で上限化し、活性化メモリ（と共有メモリ退避）を抑える。
     # これが無いと reranker はフル解像度で画像を処理し、16GB を超えて WSL2 の共有メモリへ
@@ -260,9 +266,17 @@ def train_reranker(cfg: Config) -> None:
         fp16=use_fp16,
         gradient_checkpointing=use_gc,
         gradient_checkpointing_kwargs={"use_reentrant": False} if use_gc else None,
+        # held-out eval_loss でベストを選ぶ。load_best_model_at_end は eval と save の戦略・間隔が
+        # 揃っている（save_steps が eval_steps の整数倍）ことを要求するため両者を eval_steps に揃える。
+        eval_strategy="steps",
+        eval_steps=cfg.train.eval_steps,
+        per_device_eval_batch_size=cfg.train.per_device_batch_size,
         save_strategy="steps",
-        save_steps=cfg.train.save_steps,
+        save_steps=cfg.train.eval_steps,
         save_total_limit=1,
+        load_best_model_at_end=True,
+        metric_for_best_model="eval_loss",
+        greater_is_better=False,
         logging_steps=cfg.train.logging_steps,
         report_to=[],
         seed=cfg.seed,
@@ -278,14 +292,16 @@ def train_reranker(cfg: Config) -> None:
         model=model,
         args=args,
         train_dataset=train_ds,
+        eval_dataset=eval_ds,
         loss=loss,
         callbacks=callbacks,
     )
 
     logger.info(
-        "%s を %d ペア（正例＋負例）でファインチューニングします",
+        "%s を train %d / eval %d ペアでファインチューニングします（eval_loss でベスト選択）",
         cfg.reranker.model_id,
         len(train_ds),
+        len(eval_ds),
     )
 
     # run（System Metrics・全設定）は main() の cli_run が CLI 全体に対して開く。
