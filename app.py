@@ -10,6 +10,7 @@
   3. ペルソナ閲覧          – ペルソナ名→嗜好埋め込み→嗜好テキスト→生成プロンプト→生成画像の対応を可視化
   4. Reranking デモ        – rerank_examples.json からリランク前後の順位変化を表示
   5. 2 段階検索 6 パターン  – rerank_metrics.json（埋め込み{base,ft}×リランカー{base,ft,none}）を比較
+  6. 学習曲線              – checkpoint の trainer_state.json から loss / eval 指標を描画
 
 起動: ``uv run python app.py`` → http://localhost:7860
 """
@@ -20,13 +21,25 @@ import json
 from pathlib import Path
 
 import gradio as gr
-import japanize_matplotlib  # noqa: F401  日本語フォントを自動設定
-import matplotlib
-import matplotlib.pyplot as plt
-import numpy as np
 
-# サーバ環境（GUI ディスプレイ無し）で描画するため、非対話の Agg バックエンドを使う。
-matplotlib.use("Agg")
+# 描画ロジックは plots.py（app と figures の単一ソース）に集約してある。
+from qwen3vl_demo import plots
+from qwen3vl_demo.figures import _latest_trainer_state
+from qwen3vl_demo.plots import (
+    DEFAULT_KEY_METRICS as KEY_METRICS,
+)
+from qwen3vl_demo.plots import (
+    METRIC_PREFIX as _PREFIX,
+)
+from qwen3vl_demo.plots import (
+    ordered_metric_keys as _ordered_metric_keys,
+)
+from qwen3vl_demo.plots import (
+    ordered_patterns as _ordered_patterns,
+)
+from qwen3vl_demo.plots import (
+    pattern_label as _pattern_label,
+)
 
 # ---------------------------------------------------------------------------
 # パス定義
@@ -45,29 +58,8 @@ DATA_DIRS = {
     "data_smoke (smoke run)": ROOT / "data_smoke",
 }
 
-# 表示対象とするメトリクス（表示順）。evaluate.py / 評価器が出すキーのうち主要なもの。
-KEY_METRICS = [
-    "accuracy@1",
-    "accuracy@3",
-    "accuracy@5",
-    "accuracy@10",
-    "recall@1",
-    "recall@3",
-    "recall@5",
-    "recall@10",
-    "ndcg@10",
-    "mrr@10",
-    "map@100",
-]
-
-# 評価器が付けるメトリクスキーの接頭辞（evaluate.py の EVALUATOR_NAME と対応）。
-# 例: "synthetic-image-retrieval_cosine_ndcg@10" → 表示用に "ndcg@10" へ短縮する。
-_PREFIX = "synthetic-image-retrieval_cosine_"
-
-
-def _strip_prefix(key: str) -> str:
-    """メトリクスキーから接頭辞を除いて短い表示名にする。"""
-    return key[len(_PREFIX) :] if key.startswith(_PREFIX) else key
+# メトリクスキーの定数（KEY_METRICS / _PREFIX）と整形ヘルパ（_pattern_label /
+# _ordered_* など）は plots.py から import している（上の import 参照）。
 
 
 # ---------------------------------------------------------------------------
@@ -92,57 +84,7 @@ def load_metrics(output_dir_label: str) -> tuple[dict, dict]:
 def make_metrics_figure(output_dir_label: str):
     """ベース vs ファインチューニング後を並べた棒グラフ（matplotlib Figure）を作る。"""
     base, ft = load_metrics(output_dir_label)
-
-    # KEY_METRICS のうち、どちらかのファイルに存在する項目だけを採用する。
-    labels, base_vals, ft_vals = [], [], []
-    for short_key in KEY_METRICS:
-        full_key = _PREFIX + short_key
-        if full_key in base or full_key in ft:
-            labels.append(short_key)
-            base_vals.append(base.get(full_key, 0.0))
-            ft_vals.append(ft.get(full_key, 0.0))
-
-    # メトリクスが 1 つも無ければ、その旨を描いた Figure を返す。
-    if not labels:
-        fig, ax = plt.subplots()
-        ax.text(0.5, 0.5, "メトリクスデータが見つかりません", ha="center", va="center")
-        return fig
-
-    x = np.arange(len(labels))
-    width = 0.35  # 棒の幅（ベースと FT を左右にずらして並べる）
-
-    fig, ax = plt.subplots(figsize=(12, 5))
-    bars_base = ax.bar(x - width / 2, base_vals, width, label="Base", color="#4C72B0", alpha=0.85)
-    bars_ft = ax.bar(x + width / 2, ft_vals, width, label="Fine-tuned", color="#DD8452", alpha=0.85)
-
-    ax.set_xticks(x)
-    ax.set_xticklabels(labels, rotation=30, ha="right", fontsize=9)
-    ax.set_ylim(0, 1.12)  # スコアは 0〜1。注釈ラベル用に上を少し余らせる。
-    ax.set_ylabel("Score")
-    ax.set_title(f"Base vs Fine-tuned — {output_dir_label}", fontsize=11, fontweight="bold")
-    ax.legend()
-    ax.grid(axis="y", linestyle="--", alpha=0.4)
-
-    def _annotate(bars):
-        """各棒の上に数値ラベルを描く内部ヘルパ。"""
-        for bar in bars:
-            h = bar.get_height()
-            if h > 0:
-                ax.annotate(
-                    f"{h:.3f}",
-                    xy=(bar.get_x() + bar.get_width() / 2, h),
-                    xytext=(0, 3),
-                    textcoords="offset points",
-                    ha="center",
-                    va="bottom",
-                    fontsize=7,
-                )
-
-    _annotate(bars_base)
-    _annotate(bars_ft)
-
-    fig.tight_layout()
-    return fig
+    return plots.plot_metrics(base, ft, f"Base vs Fine-tuned — {output_dir_label}", KEY_METRICS)
 
 
 def make_metrics_table(output_dir_label: str) -> list[list]:
@@ -251,23 +193,8 @@ def make_persona_embedding_figure(data_dir_label: str, persona: str):
     """ペルソナの嗜好埋め込みを7軸の横棒グラフで描く。"""
     model = load_pref_model(data_dir_label)
     if model is None or persona not in model.get("persona_pref", {}):
-        fig, ax = plt.subplots()
-        ax.text(0.5, 0.5, "preference_model.json が見つかりません", ha="center", va="center")
-        return fig
-
-    axes_labels = model["axes"]
-    vec = model["persona_pref"][persona]
-    colors = ["#DD8452" if v > 0 else "#4C72B0" if v < 0 else "#aaaaaa" for v in vec]
-
-    fig, ax = plt.subplots(figsize=(7, 3))
-    ax.barh(axes_labels, vec, color=colors, alpha=0.85)
-    ax.axvline(0, color="black", linewidth=0.8)
-    ax.set_xlim(-1.3, 1.3)
-    ax.set_xlabel("嗜好強度（+ 好む / − 嫌う）", fontsize=9)
-    ax.set_title(f"{persona} の嗜好埋め込み", fontsize=10, fontweight="bold")
-    ax.grid(axis="x", linestyle="--", alpha=0.4)
-    fig.tight_layout()
-    return fig
+        return plots.placeholder_figure("preference_model.json が見つかりません")
+    return plots.plot_persona_embedding(model["axes"], model["persona_pref"][persona], persona)
 
 
 def get_persona_pref_text(data_dir_label: str, persona: str) -> str:
@@ -432,33 +359,6 @@ def load_rerank_examples(output_dir_label: str) -> list[list]:
 # タブ 4（2 段階検索の 6 パターン評価）用のヘルパ
 # ---------------------------------------------------------------------------
 
-# 2 段階パターン（埋め込み+リランカー）の表示順。先頭 4 つが主要 4 パターン、
-# 末尾の rerank=none は「リランクなし（埋め込み検索のみ）」の参考値。
-_PATTERN_ORDER = [
-    "embed=base+rerank=base",
-    "embed=ft+rerank=base",
-    "embed=base+rerank=ft",
-    "embed=ft+rerank=ft",
-    "embed=base+rerank=none",
-    "embed=ft+rerank=none",
-]
-
-
-def _pattern_label(key: str) -> str:
-    """'embed=ft+rerank=base' -> 'ft+base' のように短い表示名にする。"""
-    return key.replace("embed=", "").replace("rerank=", "")
-
-
-def _metric_sort_key(metric: str):
-    """メトリクスキーを ndcg → recall → accuracy → mrr → map、各 @k 昇順で並べる。"""
-    priority = {"ndcg": 0, "recall": 1, "accuracy": 2, "mrr": 3, "map": 4}
-    name, _, k = metric.partition("@")
-    try:
-        kk = int(k) if k else -1
-    except ValueError:
-        kk = -1
-    return (priority.get(name, 9), kk)
-
 
 def load_rerank_metrics(output_dir_label: str) -> dict:
     """rerank_metrics.json（6 パターンの検索指標）を読み込む。無ければ空 dict。"""
@@ -466,21 +366,6 @@ def load_rerank_metrics(output_dir_label: str) -> dict:
     if not path.exists():
         return {}
     return json.loads(path.read_text())
-
-
-def _ordered_patterns(metrics: dict) -> list[str]:
-    """既知の表示順を優先しつつ、未知のキーは末尾に回す。"""
-    ordered = [k for k in _PATTERN_ORDER if k in metrics]
-    ordered += [k for k in metrics if k not in ordered]
-    return ordered
-
-
-def _ordered_metric_keys(metrics: dict) -> list[str]:
-    """全パターンに現れるメトリクスキーの和集合を、見やすい順に並べる。"""
-    keys: set[str] = set()
-    for v in metrics.values():
-        keys.update(v.keys())
-    return sorted(keys, key=_metric_sort_key)
 
 
 def make_rerank_metrics_table(output_dir_label: str) -> tuple[list[str], list[list]]:
@@ -500,37 +385,45 @@ def make_rerank_metrics_table(output_dir_label: str) -> tuple[list[str], list[li
 def make_rerank_metrics_figure(output_dir_label: str):
     """主要 4 パターンを各メトリクスでグループ化した棒グラフを作る。"""
     metrics = load_rerank_metrics(output_dir_label)
-    if not metrics:
-        fig, ax = plt.subplots()
-        ax.text(0.5, 0.5, "rerank_metrics.json が見つかりません", ha="center", va="center")
-        return fig
-
-    # 図は主要 4 パターンに絞る（rerank=none の参考値は表のみ）。
-    patterns = [k for k in _ordered_patterns(metrics) if not k.endswith("rerank=none")]
-    if not patterns:
-        patterns = _ordered_patterns(metrics)
-    mkeys = _ordered_metric_keys(metrics)
-
-    x = np.arange(len(mkeys))
-    width = 0.8 / max(1, len(patterns))
-
-    fig, ax = plt.subplots(figsize=(12, 5))
-    for i, key in enumerate(patterns):
-        vals = [metrics[key].get(m, 0.0) for m in mkeys]
-        offset = (i - (len(patterns) - 1) / 2) * width
-        ax.bar(x + offset, vals, width, label=_pattern_label(key))
-
-    ax.set_xticks(x)
-    ax.set_xticklabels(mkeys, rotation=30, ha="right", fontsize=9)
-    ax.set_ylim(0, 1.05)
-    ax.set_ylabel("Score")
-    ax.set_title(
-        f"2 段階検索 主要 4 パターン比較 — {output_dir_label}", fontsize=11, fontweight="bold"
+    return plots.plot_rerank_metrics(
+        metrics, f"2 段階検索 主要 4 パターン比較 — {output_dir_label}"
     )
-    ax.legend(title="埋め込み+リランカー", fontsize=8)
-    ax.grid(axis="y", linestyle="--", alpha=0.4)
-    fig.tight_layout()
-    return fig
+
+
+# ---------------------------------------------------------------------------
+# タブ 6（学習曲線）用のヘルパ
+# ---------------------------------------------------------------------------
+
+# 学習ステージの表示名 → checkpoint サブディレクトリ（train / train_reranker / distill）。
+_CURVE_STAGES = {
+    "embedding (train)": "checkpoints",
+    "reranker": "reranker_checkpoints",
+    "distill": "distill_checkpoints",
+}
+
+
+def make_training_curve_figure(output_dir_label: str, stage_label: str):
+    """選択ステージの trainer_state.json から学習曲線（loss + eval 指標）を描く。"""
+    sub = _CURVE_STAGES.get(stage_label, "checkpoints")
+    state = _latest_trainer_state(OUTPUT_DIRS[output_dir_label] / sub)
+    if state is None:
+        return plots.placeholder_figure(
+            f"{stage_label} の学習ログが見つかりません（{sub}/checkpoint-*/trainer_state.json）"
+        )
+    curve = plots.parse_trainer_state(state)
+    return plots.plot_training_curve(curve, f"{stage_label} の学習曲線（loss / eval）")
+
+
+def make_loss_overview_figure(output_dir_label: str):
+    """3 ステージの train loss を 1 枚に重ねた俯瞰図を描く。"""
+    curves = {}
+    for label, sub in _CURVE_STAGES.items():
+        state = _latest_trainer_state(OUTPUT_DIRS[output_dir_label] / sub)
+        if state is not None:
+            curves[label] = plots.parse_trainer_state(state)["loss"]
+    if not any(curves.values()):
+        return plots.placeholder_figure("学習ログ（trainer_state.json）が見つかりません")
+    return plots.plot_loss_overview(curves, "学習 loss の俯瞰（3 ステージ）")
 
 
 # ---------------------------------------------------------------------------
@@ -888,6 +781,44 @@ def build_app() -> gr.Blocks:
 
                 rr4_dir_dd.change(_refresh_rr4, inputs=rr4_dir_dd, outputs=[rr4_plot, rr4_table])
                 demo.load(_refresh_rr4, inputs=rr4_dir_dd, outputs=[rr4_plot, rr4_table])
+
+            # ----------------------------------------------------------------
+            # タブ 6: 学習曲線
+            # ----------------------------------------------------------------
+            with gr.Tab("📈 学習曲線"):
+                gr.Markdown(
+                    "HF Trainer の checkpoint（`trainer_state.json`）から loss / eval 指標を"
+                    "描画します。`make train` などで学習を回した後に表示できます。"
+                    "（`outputs/` はローカルのみ・VCS 非追跡なので、学習を回した環境で見てください。）"
+                )
+                with gr.Row():
+                    curve_dir_dd = gr.Dropdown(
+                        choices=output_dir_choices,
+                        value=output_dir_choices[0],
+                        label="出力ディレクトリ",
+                        interactive=True,
+                    )
+                    stage_dd = gr.Dropdown(
+                        choices=list(_CURVE_STAGES.keys()),
+                        value=next(iter(_CURVE_STAGES)),
+                        label="ステージ",
+                        interactive=True,
+                    )
+                curve_plot = gr.Plot(label="学習曲線（loss + eval 指標）")
+                overview_plot = gr.Plot(label="3 ステージ loss 俯瞰")
+
+                def _refresh_curves(out_label, stage_label):
+                    """ドロップダウン変更時／初期表示時に学習曲線と俯瞰図を再生成する。"""
+                    return (
+                        make_training_curve_figure(out_label, stage_label),
+                        make_loss_overview_figure(out_label),
+                    )
+
+                _curve_inputs = [curve_dir_dd, stage_dd]
+                _curve_outputs = [curve_plot, overview_plot]
+                curve_dir_dd.change(_refresh_curves, _curve_inputs, _curve_outputs)
+                stage_dd.change(_refresh_curves, _curve_inputs, _curve_outputs)
+                demo.load(_refresh_curves, _curve_inputs, _curve_outputs)
 
     return demo
 

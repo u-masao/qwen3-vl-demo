@@ -70,6 +70,8 @@ distill:
   model_dir: outputs_smoke/model_distilled
   num_negatives: 2
   temperature: 1.0
+  score_chunk_size: 32
+  score_batch_size: 4
 
 # 蒸留先 student のマトリクス（dvc.yaml の distill@<name> / eval_distill@<name> が読む）。
 # smoke は配線確認用に self（自己蒸留）1 件のみ・teacher=oracle（モデル不要）。

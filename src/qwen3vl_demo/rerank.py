@@ -28,7 +28,6 @@ from __future__ import annotations
 import argparse
 import json
 import logging
-import math
 import os
 
 from datasets import load_from_disk
@@ -42,6 +41,7 @@ from .config import (
     add_reranker_args,
     config_from_args,
 )
+from .metrics import ir_metrics, macro_summary, per_persona_metrics
 from .models import load_embedding_model
 from .tracking import (
     EXPERIMENT_NAME,
@@ -54,6 +54,9 @@ from .tracking import (
 )
 
 logger = logging.getLogger(__name__)
+
+# per-persona マクロ平均のブートストラップ信頼区間に使うリサンプル回数（決定的・seed 依存）。
+_CI_RESAMPLES = 1000
 
 
 def _ensure_alloc_conf() -> None:
@@ -133,49 +136,8 @@ def _build_relevant(eval_ds, relevant_same_category: bool) -> list[set[int]]:
     return relevant
 
 
-def _metrics_for(
-    ranked_lists: list[list[int]],
-    relevant_sets: list[set[int]],
-    ks: list[int],
-) -> dict[str, float]:
-    """ランキング結果から Recall@k / NDCG@k / MRR を計算する（純粋関数）。
-
-    Args:
-        ranked_lists: 各クエリの、関連度降順に並んだ文書インデックス列。
-        relevant_sets: 各クエリの正解文書インデックス集合。
-        ks: Recall / NDCG を測る上位件数のリスト。
-
-    Returns:
-        ``{"recall@k": ..., "ndcg@k": ..., "mrr": ...}`` の dict。
-    """
-    n = max(1, len(ranked_lists))
-    out: dict[str, float] = {}
-
-    for k in ks:
-        recall_sum = 0.0
-        ndcg_sum = 0.0
-        for ranked, rel in zip(ranked_lists, relevant_sets, strict=False):
-            if not rel:
-                continue
-            topk = ranked[:k]
-            hits = sum(1 for d in topk if d in rel)
-            recall_sum += hits / len(rel)
-            # 2 値関連度の DCG / IDCG。
-            dcg = sum(1.0 / math.log2(pos + 1) for pos, d in enumerate(topk, start=1) if d in rel)
-            ideal = sum(1.0 / math.log2(p + 1) for p in range(1, min(k, len(rel)) + 1))
-            ndcg_sum += (dcg / ideal) if ideal > 0 else 0.0
-        out[f"recall@{k}"] = recall_sum / n
-        out[f"ndcg@{k}"] = ndcg_sum / n
-
-    # MRR: 最初に現れた正解の逆順位（ランキング全体を対象）。
-    mrr_sum = 0.0
-    for ranked, rel in zip(ranked_lists, relevant_sets, strict=False):
-        for pos, d in enumerate(ranked, start=1):
-            if d in rel:
-                mrr_sum += 1.0 / pos
-                break
-    out["mrr"] = mrr_sum / n
-    return out
+# メトリクス計算は metrics.py に集約（per-persona マクロ集計と共通化）。後方互換のため別名を残す。
+_metrics_for = ir_metrics
 
 
 def _retrieve_topk(
@@ -365,11 +327,28 @@ def run_rerank(cfg: Config, num_queries: int = 5, args: argparse.Namespace | Non
             candidates[emb_name] = _retrieve_topk(cfg, emb_id, queries, corpus_images, top_k)
         timings[f"time.retrieve.{emb_name}_sec"] = t.elapsed
 
-    metrics: dict[str, dict[str, float]] = {}
+    # クエリ＝ペルソナ名なので、行（画像）単位のマイクロ平均は頻出ペルソナに偏る。指標は
+    # **per-persona マクロ平均**（各ペルソナ等重み）を正とし、ペルソナ間ばらつきも併せて出す。
+    metrics: dict[str, dict[str, float]] = {}  # フラットな per-persona マクロ（後方互換キー）
+    detail: dict[str, dict] = {}  # per-persona 内訳・ばらつき・参考のマイクロ平均
+
+    def _record(key: str, ranked: list[list[int]]) -> None:
+        summary = macro_summary(
+            per_persona_metrics(ranked, relevant, queries, ks),
+            ci_resamples=_CI_RESAMPLES,
+            seed=cfg.seed,
+        )
+        metrics[key] = summary["macro"]
+        detail[key] = {
+            "per_persona": summary["per_persona"],
+            "spread": summary["spread"],
+            "n_personas": summary["n_personas"],
+            "micro": ir_metrics(ranked, relevant, ks),  # 参考: 旧来のマイクロ平均
+        }
 
     # 参考: リランクなし（埋め込み検索のみ）の指標も記録する。
     for emb_name, cand in candidates.items():
-        metrics[f"embed={emb_name}+rerank=none"] = _metrics_for(cand, relevant, ks)
+        _record(f"embed={emb_name}+rerank=none", cand)
 
     # --- 第 2 段: 各リランカーで全埋め込みの候補を並べ替えて評価 ---
     reranked_by_rr: dict[str, dict[str, list[list[int]]]] = {}
@@ -382,13 +361,17 @@ def run_rerank(cfg: Config, num_queries: int = 5, args: argparse.Namespace | Non
             vram_peaks[f"vram.rerank.{rr_name}_peak_mib"] = peak_mib
         reranked_by_rr[rr_name] = reranked
         for emb_name, ranked in reranked.items():
-            metrics[f"embed={emb_name}+rerank={rr_name}"] = _metrics_for(ranked, relevant, ks)
+            _record(f"embed={emb_name}+rerank={rr_name}", ranked)
 
-    # メトリクスを保存。
+    # メトリクスを保存。rerank_metrics.json は後方互換のフラットな per-persona マクロ、
+    # rerank_metrics_detail.json に per-persona 内訳・ばらつき（std/min/max・CI）・参考マイクロを出す。
     cfg.output_path.mkdir(parents=True, exist_ok=True)
     metrics_file = cfg.output_path / "rerank_metrics.json"
     with open(metrics_file, "w", encoding="utf-8") as fh:
         json.dump(metrics, fh, indent=2, sort_keys=True)
+    detail_file = cfg.output_path / "rerank_metrics_detail.json"
+    with open(detail_file, "w", encoding="utf-8") as fh:
+        json.dump(detail, fh, indent=2, sort_keys=True)
 
     # サマリを表示（主要指標 NDCG@top_k）。
     logger.info("=== 6 パターン評価（NDCG@%d / MRR）===", top_k)
@@ -397,7 +380,7 @@ def run_rerank(cfg: Config, num_queries: int = 5, args: argparse.Namespace | Non
         logger.info(
             "  %-28s NDCG@%d=%.4f  MRR=%.4f", key, top_k, m.get(f"ndcg@{top_k}", 0), m["mrr"]
         )
-    logger.info("  メトリクス -> %s", metrics_file)
+    logger.info("  メトリクス -> %s（per-persona 内訳 -> %s）", metrics_file, detail_file)
 
     # MLflow: stage run（main の cli_run）に所要時間・VRAM ピークを記録し、各バリアント精度を
     # 子 run に残す（Retriever=rerank none と Reranker を同一 Experiment に並べる。Issue #9）。

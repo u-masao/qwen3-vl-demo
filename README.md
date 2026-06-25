@@ -46,15 +46,45 @@ generation prompt for its image):
 
 ![Synthetic dataset samples](docs/images/sample_grid.png)
 
+**How labels are made** — a persona's preference vector is sampled into binary attributes, turned
+into a prompt, and the image is labeled with the persona whose *appeal* is argmax. Non-additive
+interactions can make the winner differ from the generating persona — the source of reranker headroom:
+
+![Preference labeling pipeline](docs/images/preference_pipeline.png)
+
+**Non-additive interactions** — e.g. "likes warm, likes ornate, but dislikes warm-and-ornate"
+(green = bonus / red = penalty). A linear bi-encoder can't draw this boundary; the cross-encoder reranker can:
+
+![Non-additive interactions](docs/images/preference_interactions.png)
+
+**Label imbalance** — argmax-appeal labeling is naturally imbalanced across personas:
+
+![Persona label counts](docs/images/dataset_persona_counts.png)
+
 **Personalized image retrieval, before vs after fine-tuning** — top results for a persona query;
 green border = an image whose argmax-appeal persona matches the query. Fine-tuning pulls the right images up:
 
 ![Retrieval before vs after fine-tuning](docs/images/retrieval_before_after.png)
 
-**Gradio viewer** — browse the dataset and compare two-stage (embedding × reranker) metrics interactively:
+**Retrieval metrics & two-stage search** — embedding Base vs Fine-tuned, and the four
+embedding × reranker patterns of two-stage search:
 
-![Gradio dataset tab](docs/images/gradio_dataset.png)
-![Gradio two-stage (embedding × reranker) tab](docs/images/gradio_metrics.png)
+![Base vs fine-tuned metrics](docs/images/metrics_base_vs_ft.png)
+![Two-stage retrieval metrics](docs/images/rerank_metrics.png)
+
+**Training curve** — embedding fine-tuning loss and eval NDCG@10 over steps:
+
+![Embedding fine-tuning curve](docs/images/training_curve.png)
+
+**Gradio viewer** (`uv run python app.py` → http://localhost:7860) — an interactive, read-only
+browser for the pipeline outputs, with six tabs:
+
+- **📊 Metrics** — base vs fine-tuned embedding retrieval scores (bar chart + table)
+- **🖼️ Dataset** — browse generated images with their captions (= generation prompts)
+- **🧑 Personas** — a persona's archetype mix → preference embedding → preferred fragments → generation prompt → images, plus its non-additive interactions
+- **🔄 Reranking** — per-query rank changes before vs after reranking
+- **🔀 Two-stage search** — the six embedding × reranker patterns
+- **📈 Training curves** — loss / eval metrics from each stage's `trainer_state.json`
 
 ---
 
