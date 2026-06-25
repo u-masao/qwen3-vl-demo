@@ -199,6 +199,8 @@ stages:
         --distill-model-dir ${common.paths.output_dir}/distill_${key}
         --distill-num-negatives ${distill.num_negatives}
         --distill-temperature ${distill.temperature}
+        --distill-score-chunk-size ${distill.score_chunk_size}
+        --distill-score-batch-size ${distill.score_batch_size}
         --epochs ${train.epochs}
         --batch-size ${train.per_device_batch_size}
         --grad-accum ${train.gradient_accumulation_steps}
