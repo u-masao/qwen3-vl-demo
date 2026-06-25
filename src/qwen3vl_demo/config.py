@@ -151,7 +151,11 @@ class TrainCfg:
     gradient_accumulation_steps: int = 1
     learning_rate: float = 2.0e-5
     warmup_ratio: float = 0.1
+    weight_decay: float = 0.0  # AdamW の weight decay（0 = 正則化なし）
     gradient_checkpointing: bool = True  # VRAM 節約（速度と引き換え）
+    # 0 = in-batch negatives のみ（既存動作）; >0 = 学習前に埋め込みモデルで
+    # ハードネガティブをマイニングして MNRL の追加 negative として渡す（Issue #33）。
+    num_negatives: int = 0
     eval_steps: int = 50  # 何ステップごとに評価器を回すか
     save_steps: int = 50
     logging_steps: int = 10
@@ -613,6 +617,18 @@ def add_train_args(parser: argparse.ArgumentParser) -> None:
         default=_UNSET,
         help="ログ間隔ステップ（train.logging_steps）。",
     )
+    g.add_argument(
+        "--weight-decay",
+        type=float,
+        default=_UNSET,
+        help="AdamW weight decay（train.weight_decay）。",
+    )
+    g.add_argument(
+        "--train-num-negatives",
+        type=int,
+        default=_UNSET,
+        help="事前マイニングするハードネガティブ数（train.num_negatives）。0=in-batch only。",
+    )
 
 
 # オーバーライド引数の dest → (Config 上の親オブジェクトを返す関数, 属性名) の対応表。
@@ -662,7 +678,9 @@ def _override_targets(cfg: Config):
         "grad_accum": (cfg.train, "gradient_accumulation_steps"),
         "lr": (cfg.train, "learning_rate"),
         "warmup_ratio": (cfg.train, "warmup_ratio"),
+        "weight_decay": (cfg.train, "weight_decay"),
         "gradient_checkpointing": (cfg.train, "gradient_checkpointing"),
+        "train_num_negatives": (cfg.train, "num_negatives"),
         "eval_steps": (cfg.train, "eval_steps"),
         "save_steps": (cfg.train, "save_steps"),
         "logging_steps": (cfg.train, "logging_steps"),

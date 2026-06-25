@@ -65,10 +65,12 @@ reranker:
 train:
   epochs: 1
   per_device_batch_size: 4
-  gradient_accumulation_steps: 1
+  gradient_accumulation_steps: 8
   learning_rate: 2.0e-5
   warmup_ratio: 0.1
+  weight_decay: 0.01
   gradient_checkpointing: true
+  num_negatives: 3
   eval_steps: 50
   save_steps: 10000
   logging_steps: 10

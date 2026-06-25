@@ -59,7 +59,9 @@ train:
   gradient_accumulation_steps: 1
   learning_rate: 2.0e-5
   warmup_ratio: 0.0
+  weight_decay: 0.0
   gradient_checkpointing: false
+  num_negatives: 0  # smoke は速度優先、マイニングなし（in-batch only）
   eval_steps: 5
   save_steps: 10000
   logging_steps: 1

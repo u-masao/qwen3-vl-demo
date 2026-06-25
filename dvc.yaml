@@ -89,7 +89,9 @@ stages:
       --grad-accum ${train.gradient_accumulation_steps}
       --lr ${train.learning_rate}
       --warmup-ratio ${train.warmup_ratio}
+      --weight-decay ${train.weight_decay}
       --gradient-checkpointing ${train.gradient_checkpointing}
+      --train-num-negatives ${train.num_negatives}
       --eval-steps ${train.eval_steps}
       --save-steps ${train.save_steps}
       --logging-steps ${train.logging_steps}

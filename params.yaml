@@ -70,10 +70,16 @@ train:
   # 4 だと reranker 学習で VRAM が共有メモリへ退避したため 2 に下げる（埋め込み学習と共通。
   # MNRL の負例数は減るが 16GB での安定動作を優先。Issue #11）。
   per_device_batch_size: 2
-  gradient_accumulation_steps: 1
+  # 8 にすることで 1 回の有効更新に 8 ミニバッチ分の勾配を平均化し、学習曲線ノイズを低減（Issue #33）。
+  # VRAM 使用量は変わらない（勾配累積のため）。
+  gradient_accumulation_steps: 8
   learning_rate: 2.0e-5
   warmup_ratio: 0.1
+  weight_decay: 0.01   # AdamW 正則化（Issue #33）
   gradient_checkpointing: true
+  # 事前にハードネガティブをマイニングして MNRL の追加 negative として渡す（Issue #33）。
+  # batch_size=2 では in-batch negative が 1 個しかないため、これで実効負例数を補完する。
+  num_negatives: 3
   eval_steps: 50
   save_steps: 10000
   logging_steps: 10
