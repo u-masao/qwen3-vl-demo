@@ -28,6 +28,7 @@
 from __future__ import annotations
 
 import argparse
+import gc
 import logging
 import math
 
@@ -218,6 +219,12 @@ def _teacher_reranker_scores(
         )
         chunk = [[personas[q], images[doc]] for q, doc in needed[start : start + score_chunk]]
         scores = reranker.predict(chunk, batch_size=score_batch, show_progress_bar=False)
+        logger.info(
+            "  [debug] チャンク %d/%d 採点完了: %d スコア",
+            start // score_chunk + 1,
+            n_chunks,
+            len(scores),
+        )
         raw_scores.extend(float(s) for s in scores)
         if cfg.device != "cpu":
             import torch
@@ -225,6 +232,14 @@ def _teacher_reranker_scores(
             torch.cuda.empty_cache()
     raw = raw_scores
     _free_model(reranker)
+    if cfg.device != "cpu":
+        import torch
+
+        logger.info(
+            "  [debug] reranker 解放後: allocated=%.1fGB reserved=%.1fGB",
+            torch.cuda.memory_allocated() / 1e9,
+            torch.cuda.memory_reserved() / 1e9,
+        )
 
     return {pair: float(score) for pair, score in zip(needed, raw, strict=True)}
 
@@ -272,6 +287,10 @@ def _build_distill_dataset(cfg: Config) -> tuple[Dataset, str]:
 
     # パターン A: リランカー teacher のマージンを MarginMSE ラベルにする。
     scores = _teacher_reranker_scores(cfg, personas, images, grouped)
+    # CrossEncoder は _free_model で CPU に移したが、Python の refcount では呼び出し元変数が
+    # スコープ外になるまで解放されない。gc.collect() で確実に解放してから Dataset を構築する
+    # （Issue #30: CPU RAM OOM 対策）。
+    gc.collect()
     rows = build_margin_rows(grouped, scores)
     features = Features(
         {
@@ -335,10 +354,26 @@ def distill(cfg: Config) -> None:
 
     # データ構築（マイニング・teacher 採点）を student のロードより先に行い、VRAM 同居を避ける。
     train_ds, loss_kind = _build_distill_dataset(cfg)
+    if cfg.device != "cpu":
+        import torch
+
+        logger.info(
+            "  [debug] データセット構築完了: allocated=%.1fGB reserved=%.1fGB",
+            torch.cuda.memory_allocated() / 1e9,
+            torch.cuda.memory_reserved() / 1e9,
+        )
 
     # student の初期化元は distill.student_model で選べる（既定＝ベース埋め込みの自己蒸留）。
     student_id = _resolve_student_id(cfg)
     model = load_embedding_model(cfg, model_id=student_id)
+    if cfg.device != "cpu":
+        import torch
+
+        logger.info(
+            "  [debug] student ロード完了: allocated=%.1fGB reserved=%.1fGB",
+            torch.cuda.memory_allocated() / 1e9,
+            torch.cuda.memory_reserved() / 1e9,
+        )
 
     if cfg.train.gradient_checkpointing and hasattr(model, "gradient_checkpointing_enable"):
         try:

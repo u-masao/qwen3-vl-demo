@@ -102,7 +102,19 @@ def build_pair_indices(
 
 
 def _free_model(model) -> None:
-    """モデルを破棄して GPU メモリを解放する。"""
+    """モデルを破棄して GPU メモリを解放する。
+
+    `del model` だけでは PyTorch アロケータが VRAM ブロックを保持し続けるため、
+    先に `.to("cpu")` で重みを CPU へ退避させてから削除する（Issue #30）。
+    """
+    try:
+        import torch
+
+        if torch.cuda.is_available():
+            model.to("cpu")
+            torch.cuda.synchronize()
+    except Exception:  # noqa: BLE001
+        pass
     del model
     gc.collect()
     try:

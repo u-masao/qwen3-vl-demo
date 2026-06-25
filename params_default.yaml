@@ -84,7 +84,7 @@ distill:
   #   teacher=oracle   … パターン B（嗖好モデルの soft label, CoSENT）。teacher はモデル不要。
   teacher: reranker
   model_dir: outputs/model_distilled   # 蒸留済み student 埋め込みの保存先
-  num_negatives: 3                     # 蒸留ペアの 1 クエリあたり負例数
+  num_negatives: 3                     # 蒸留ペアの 1 クエリあたり負例数（7 は Dataset.from_dict で CPU RAM OOM、Issue #30）
   temperature: 1.0                     # oracle soft relevance の温度（reranker では未使用）
   score_chunk_size: 32                 # teacher CrossEncoder 採点のチャンクサイズ（OOM 対策、Issue #30）
   score_batch_size: 4                  # teacher CrossEncoder predict の batch_size（OOM 対策、Issue #30）
