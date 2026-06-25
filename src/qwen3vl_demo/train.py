@@ -67,6 +67,9 @@ def train(cfg: Config) -> None:
         # ハードネガティブマイニング（Issue #33）: 埋め込みモデルでコーパスをエンコードし、
         # 各クエリに類似度上位の画像を負例として選ぶ。mine_hard_negatives 内でモデルを
         # ロード→解放するため、この時点では学習モデルはまだ VRAM に乗っていない。
+        from datasets import Dataset, Features, Value
+        from datasets import Image as HFImage
+
         from .train_reranker import mine_hard_negatives
 
         anchors_list = [row["anchor"] for row in train_ds]
@@ -81,7 +84,11 @@ def train(cfg: Config) -> None:
             if label == 0.0:
                 neg_map.setdefault(q_idx, []).append(d_idx)
 
+        # PIL Image は add_column で PyArrow に直接変換できないため、Dataset.from_dict で
+        # HFImage Feature を明示して再構築する（train_reranker.py と同方針）。
         n = len(train_ds)
+        new_data: dict = {"anchor": anchors_list, "positive": images_list}
+        feat_dict: dict = {"anchor": Value("string"), "positive": HFImage()}
         for slot in range(cfg.train.num_negatives):
             # フォールバック: 負例が足りない場合は index 0 の画像で埋める（コーパスが極小のとき）。
             neg_col = [
@@ -90,13 +97,14 @@ def train(cfg: Config) -> None:
                 else images_list[0]
                 for i in range(n)
             ]
-            train_ds = train_ds.add_column(f"negative_{slot}", neg_col)
+            new_data[f"negative_{slot}"] = neg_col
+            feat_dict[f"negative_{slot}"] = HFImage()
 
-    # MNRL が必要とするのは (anchor, positive[, negative_0, negative_1, ...]) の形式。
-    # 補助列は落とし、列順を anchor → positive → negative_* に保つ（MNRL の入力順）。
-    neg_cols = [f"negative_{i}" for i in range(cfg.train.num_negatives)]
-    keep = [c for c in ["anchor", "positive"] + neg_cols if c in train_ds.column_names]
-    train_ds = train_ds.select_columns(keep)
+        train_ds = Dataset.from_dict(new_data, features=Features(feat_dict))
+    else:
+        # MNRL が必要とするのは (anchor, positive) の 2 カラムだけ。補助列は落としておく。
+        keep = [c for c in ["anchor", "positive"] if c in train_ds.column_names]
+        train_ds = train_ds.select_columns(keep)
 
     model = load_embedding_model(cfg)
 
