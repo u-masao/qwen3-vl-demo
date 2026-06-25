@@ -29,6 +29,7 @@ from __future__ import annotations
 
 import argparse
 import logging
+import math
 
 from datasets import Dataset, Features, Value, load_from_disk
 from datasets import Image as HFImage
@@ -186,14 +187,35 @@ def _teacher_reranker_scores(
     if cfg.reranker.max_pixels:
         ce_kwargs["processor_kwargs"] = {"max_pixels": cfg.reranker.max_pixels}
     reranker = CrossEncoder(reranker_id, **ce_kwargs)
+    if cfg.device != "cpu":
+        import torch
+
+        logger.info(
+            "  [debug] CrossEncoder ロード完了: allocated=%.1fGB reserved=%.1fGB",
+            torch.cuda.memory_allocated() / 1e9,
+            torch.cuda.memory_reserved() / 1e9,
+        )
 
     # 8000件規模ではVRAMがWSL2共有メモリへ退避しOOMになるため、チャンク単位で採点し
     # バッチ間でCUDAキャッシュを解放する（Issue #25）。
     # score_chunk_size / score_batch_size は params.yaml で調整可能（Issue #30）。
     score_chunk = cfg.distill.score_chunk_size
     score_batch = cfg.distill.score_batch_size
+    n_chunks = math.ceil(len(needed) / score_chunk)
+    logger.info(
+        "  [debug] 採点ループ開始: %d ペア, chunk=%d, batch=%d",
+        len(needed),
+        score_chunk,
+        score_batch,
+    )
     raw_scores: list[float] = []
     for start in range(0, len(needed), score_chunk):
+        logger.info(
+            "  [debug] チャンク %d/%d 採点開始 (start=%d)",
+            start // score_chunk + 1,
+            n_chunks,
+            start,
+        )
         chunk = [[personas[q], images[doc]] for q, doc in needed[start : start + score_chunk]]
         scores = reranker.predict(chunk, batch_size=score_batch, show_progress_bar=False)
         raw_scores.extend(float(s) for s in scores)
@@ -221,6 +243,18 @@ def _build_distill_dataset(cfg: Config) -> tuple[Dataset, str]:
     # ハードネガティブマイニング（埋め込みをロード→解放）を teacher ロードより先に行う。
     pairs = mine_hard_negatives(cfg, personas, images, cfg.distill.num_negatives, seed=cfg.seed)
     grouped = group_negatives(pairs)
+
+    # mine_hard_negatives 後の明示的フラッシュ。PyTorch アロケータが内部プールを保持したまま
+    # CrossEncoder をロードするとピーク VRAM が増えるため、ここで解放しておく（Issue #30）。
+    if cfg.device != "cpu":
+        import torch
+
+        torch.cuda.empty_cache()
+        logger.info(
+            "  [debug] mine 後 VRAM flush: allocated=%.1fGB reserved=%.1fGB",
+            torch.cuda.memory_allocated() / 1e9,
+            torch.cuda.memory_reserved() / 1e9,
+        )
 
     if cfg.distill.teacher == "oracle":
         # パターン B: 嗖好モデル（正解の作り手）の soft relevance を CoSENT ラベルにする。
