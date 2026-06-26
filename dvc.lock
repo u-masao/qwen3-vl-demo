@@ -702,7 +702,7 @@ stages:
       outputs/model --embedding-model Qwen/Qwen3-VL-Embedding-2B --attn-impl flash_attention_2
       --max-pixels 200704 --query-prompt-name default --reranker-model Qwen/Qwen3-VL-Reranker-2B
       --reranker-dir outputs/reranker --reranker-max-pixels 100352 --num-negatives
-      3 --epochs 1 --batch-size 2 --grad-accum 1 --lr 2e-05 --warmup-ratio 0.1 --gradient-checkpointing
+      3 --epochs 1 --batch-size 2 --grad-accum 8 --lr 2e-05 --warmup-ratio 0.1 --gradient-checkpointing
       true --eval-steps 50 --logging-steps 10\n"
     deps:
     - path: data/train
@@ -712,9 +712,9 @@ stages:
       nfiles: 3
     - path: outputs/model
       hash: md5
-      md5: 7be7c2c9f4cbc57d834c7b7be56c474b.dir
-      size: 4266674877
-      nfiles: 14
+      md5: 07f778a923241af84055bd65c7204730.dir
+      size: 4266885465
+      nfiles: 20
     - path: src/qwen3vl_demo/models.py
       hash: md5
       md5: 24df6fe63194e7802c546043398fcf5b
@@ -726,9 +726,9 @@ stages:
     outs:
     - path: outputs/reranker
       hash: md5
-      md5: 0b3b6f2904ded433b6e727a400e1c380.dir
-      size: 4266858198
-      nfiles: 20
+      md5: d47943914c4ba1f328399d1b8cabcf60.dir
+      size: 4266846525
+      nfiles: 18
   generate_data:
     cmd: "uv run python -m qwen3vl_demo.generate_data --profile default --seed 1 --device
       cuda --dtype bfloat16 --data-dir data --num-train 500 --num-eval 200 --image-size
@@ -802,9 +802,9 @@ stages:
     cmd: "uv run python -m qwen3vl_demo.train --profile default --seed 1 --device
       cuda --dtype bfloat16 --data-dir data --output-dir outputs --model-dir outputs/model
       --embedding-model Qwen/Qwen3-VL-Embedding-2B --attn-impl flash_attention_2 --max-pixels
-      200704 --query-prompt-name default --epochs 1 --batch-size 2 --grad-accum 1
-      --lr 2e-05 --warmup-ratio 0.1 --gradient-checkpointing true --eval-steps 50
-      --save-steps 10000 --logging-steps 10\n"
+      200704 --query-prompt-name default --epochs 1 --batch-size 2 --grad-accum 8
+      --lr 2e-05 --warmup-ratio 0.1 --weight-decay 0.01 --gradient-checkpointing true
+      --train-num-negatives 3 --eval-steps 50 --save-steps 10000 --logging-steps 10\n"
     deps:
     - path: data/eval
       hash: md5
@@ -830,14 +830,14 @@ stages:
       size: 4938
     - path: src/qwen3vl_demo/train.py
       hash: md5
-      md5: a6ceb2d2b134beae9c07088408e89cce
-      size: 6758
+      md5: d9c695716122bbff23a268da4cb94201
+      size: 9223
     outs:
     - path: outputs/model
       hash: md5
-      md5: 7be7c2c9f4cbc57d834c7b7be56c474b.dir
-      size: 4266674877
-      nfiles: 14
+      md5: 07f778a923241af84055bd65c7204730.dir
+      size: 4266885465
+      nfiles: 20
   eval:
     cmd: "uv run python -m qwen3vl_demo.evaluate --profile default --seed 1 --data-dir
       data --output-dir outputs --model-dir outputs/model --embedding-model Qwen/Qwen3-VL-Embedding-2B
@@ -851,9 +851,9 @@ stages:
       nfiles: 3
     - path: outputs/model
       hash: md5
-      md5: 7be7c2c9f4cbc57d834c7b7be56c474b.dir
-      size: 4266674877
-      nfiles: 14
+      md5: 07f778a923241af84055bd65c7204730.dir
+      size: 4266885465
+      nfiles: 20
     - path: src/qwen3vl_demo/evaluate.py
       hash: md5
       md5: 3b096cf00442a312ba3b63b1a8b0ebf0
@@ -873,8 +873,8 @@ stages:
     outs:
     - path: outputs/metrics_finetuned.json
       hash: md5
-      md5: ebd5f6848354f59f8a3a3d0638f50548
-      size: 1015
+      md5: 42ca8e094ce307b11fd1a95067e5fcfe
+      size: 1022
   rerank:
     cmd: "uv run python -m qwen3vl_demo.rerank --profile default --seed 1 --device
       cuda --data-dir data --output-dir outputs --model-dir outputs/model --embedding-model
@@ -932,7 +932,7 @@ stages:
       reranker --distill-student-model none --distill-student-kind bi --distill-quantize
       none --distill-model-dir outputs/distill_self --distill-num-negatives 3 --distill-temperature
       1.0 --distill-score-chunk-size 32 --distill-score-batch-size 4 --epochs 1 --batch-size
-      2 --grad-accum 1 --lr 2e-05 --warmup-ratio 0.1 --gradient-checkpointing true
+      2 --grad-accum 8 --lr 2e-05 --warmup-ratio 0.1 --gradient-checkpointing true
       --eval-steps 50 --save-steps 10000 --logging-steps 10\n"
     deps:
     - path: data/eval
@@ -947,14 +947,14 @@ stages:
       nfiles: 3
     - path: outputs/model
       hash: md5
-      md5: 7be7c2c9f4cbc57d834c7b7be56c474b.dir
-      size: 4266674877
-      nfiles: 14
+      md5: 07f778a923241af84055bd65c7204730.dir
+      size: 4266885465
+      nfiles: 20
     - path: outputs/reranker
       hash: md5
-      md5: 0b3b6f2904ded433b6e727a400e1c380.dir
-      size: 4266858198
-      nfiles: 20
+      md5: d47943914c4ba1f328399d1b8cabcf60.dir
+      size: 4266846525
+      nfiles: 18
     - path: src/qwen3vl_demo/distill.py
       hash: md5
       md5: 7fdf725611c18db23aed332fe83f04d0
@@ -982,8 +982,8 @@ stages:
     outs:
     - path: outputs/distill_self
       hash: md5
-      md5: 31c28fbc755b2391d07d03726bb69acc.dir
-      size: 4266731038
+      md5: 635593bf5442415d32d238869501556d.dir
+      size: 4266772648
       nfiles: 17
   distill@ft_continue:
     cmd: "uv run python -m qwen3vl_demo.distill --profile default --seed 1 --device
