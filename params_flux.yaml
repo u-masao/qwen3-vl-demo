@@ -70,7 +70,7 @@ train:
   warmup_ratio: 0.1
   weight_decay: 0.01
   gradient_checkpointing: true
-  num_negatives: 3
+  num_negatives: 1
   eval_steps: 50
   save_steps: 10000
   logging_steps: 10

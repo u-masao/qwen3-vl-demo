@@ -79,7 +79,8 @@ train:
   gradient_checkpointing: true
   # 事前にハードネガティブをマイニングして MNRL の追加 negative として渡す（Issue #33）。
   # batch_size=2 では in-batch negative が 1 個しかないため、これで実効負例数を補完する。
-  num_negatives: 3
+  # 3 は VRAM 退避（22360 MiB）を引き起こしたため 1 に下げる。
+  num_negatives: 1
   eval_steps: 50
   save_steps: 10000
   logging_steps: 10
