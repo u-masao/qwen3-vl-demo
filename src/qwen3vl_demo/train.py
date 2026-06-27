@@ -54,6 +54,58 @@ def train(cfg: Config) -> None:
     )
     from sentence_transformers.losses import MultipleNegativesRankingLoss
 
+    # データ準備とハードネガティブマイニングを学習モデルのロード前に行う。
+    # マイニング用埋め込みモデル（2B）と学習モデル（2B）を同時に VRAM に乗せると
+    # 16GB カードで枯渇するため、マイニング → 解放 → 学習モデルロードの順にする。
+    train_ds = load_from_disk(str(cfg.data_path / "train"))
+    # ペルソナ名をアンカーとして使う（嗜好ベース検索タスク）。
+    # persona 列を anchor に昇格させ、MNRL が期待する (anchor, positive) の形式にする。
+    train_ds = train_ds.remove_columns(["anchor", "subject", "category"])
+    train_ds = train_ds.rename_column("persona", "anchor")
+
+    if cfg.train.num_negatives > 0:
+        # ハードネガティブマイニング（Issue #33）: 埋め込みモデルでコーパスをエンコードし、
+        # 各クエリに類似度上位の画像を負例として選ぶ。mine_hard_negatives 内でモデルを
+        # ロード→解放するため、この時点では学習モデルはまだ VRAM に乗っていない。
+        from datasets import Dataset, Features, Value
+        from datasets import Image as HFImage
+
+        from .train_reranker import mine_hard_negatives
+
+        anchors_list = [row["anchor"] for row in train_ds]
+        images_list = [row["positive"] for row in train_ds]
+        logger.info("ハードネガティブをマイニング中... (num_negatives=%d)", cfg.train.num_negatives)
+        pairs = mine_hard_negatives(
+            cfg, anchors_list, images_list, cfg.train.num_negatives, seed=cfg.seed
+        )
+
+        neg_map: dict[int, list[int]] = {}
+        for q_idx, d_idx, label in pairs:
+            if label == 0.0:
+                neg_map.setdefault(q_idx, []).append(d_idx)
+
+        # PIL Image は add_column で PyArrow に直接変換できないため、Dataset.from_dict で
+        # HFImage Feature を明示して再構築する（train_reranker.py と同方針）。
+        n = len(train_ds)
+        new_data: dict = {"anchor": anchors_list, "positive": images_list}
+        feat_dict: dict = {"anchor": Value("string"), "positive": HFImage()}
+        for slot in range(cfg.train.num_negatives):
+            # フォールバック: 負例が足りない場合は index 0 の画像で埋める（コーパスが極小のとき）。
+            neg_col = [
+                images_list[neg_map[i][slot]]
+                if i in neg_map and slot < len(neg_map[i])
+                else images_list[0]
+                for i in range(n)
+            ]
+            new_data[f"negative_{slot}"] = neg_col
+            feat_dict[f"negative_{slot}"] = HFImage()
+
+        train_ds = Dataset.from_dict(new_data, features=Features(feat_dict))
+    else:
+        # MNRL が必要とするのは (anchor, positive) の 2 カラムだけ。補助列は落としておく。
+        keep = [c for c in ["anchor", "positive"] if c in train_ds.column_names]
+        train_ds = train_ds.select_columns(keep)
+
     model = load_embedding_model(cfg)
 
     # 勾配チェックポイント: 計算を一部やり直す代わりに activation を保持せず VRAM を節約する。
@@ -63,15 +115,6 @@ def train(cfg: Config) -> None:
             model.gradient_checkpointing_enable()
         except Exception as exc:  # noqa: BLE001 - ベストエフォート（全バックボーンが対応とは限らない）
             logger.warning("  勾配チェックポイントを有効化できませんでした: %s", exc)
-
-    train_ds = load_from_disk(str(cfg.data_path / "train"))
-    # ペルソナ名をアンカーとして使う（嗜好ベース検索タスク）。
-    # persona 列を anchor に昇格させ、MNRL が期待する (anchor, positive) の形式にする。
-    train_ds = train_ds.remove_columns(["anchor", "subject", "category"])
-    train_ds = train_ds.rename_column("persona", "anchor")
-    # MNRL が必要とするのは (anchor, positive) の 2 カラムだけ。補助列は落としておく。
-    keep = [c for c in ("anchor", "positive") if c in train_ds.column_names]
-    train_ds = train_ds.select_columns(keep)
 
     loss = MultipleNegativesRankingLoss(model)
     evaluator = build_ir_evaluator(cfg)  # 学習中の途中評価に使う（評価器は eval スプリット由来）
@@ -87,6 +130,7 @@ def train(cfg: Config) -> None:
         gradient_accumulation_steps=cfg.train.gradient_accumulation_steps,
         learning_rate=cfg.train.learning_rate,
         warmup_ratio=cfg.train.warmup_ratio,
+        weight_decay=cfg.train.weight_decay,
         bf16=use_bf16,
         fp16=use_fp16,
         gradient_checkpointing=cfg.train.gradient_checkpointing,
